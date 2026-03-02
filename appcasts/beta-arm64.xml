@@ -5,21 +5,19 @@
     <description>Docktor update feed (beta channel)</description>
     <language>en</language>
     <item>
-      <title>Version 0.0.23</title>
-      <link>https://github.com/apotenza92/docktor/releases/tag/v0.0.23</link>
-      <sparkle:version>2390000</sparkle:version>
-      <sparkle:shortVersionString>0.0.23</sparkle:shortVersionString>
+      <title>Version 0.0.24-beta.1</title>
+      <link>https://github.com/apotenza92/docktor/releases/tag/v0.0.24-beta.1</link>
+      <sparkle:version>2400001</sparkle:version>
+      <sparkle:shortVersionString>0.0.24-beta.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/apotenza92/docktor/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <description sparkle:format="plain-text"><![CDATA[- Updated defaults: first click now defaults to `Activate App`, while active-app click stays `App Exposé` with `>1 window only` OFF by default.
-- Simplified the action table UI by moving App Exposé gating into picker options (`App Exposé` / `App Exposé (>1 window only)`) for all slots and returning the table to single-row cells.
-- Improved scroll direction handling to follow effective per-device event direction (including remappers like LinearMouse) instead of global-only natural-scroll preference.
-- Added a GitHub mark button next to `About` in settings and refreshed README default-behavior documentation.
-- Standardized Hide toggles so re-running `Hide App` or `Hide Others` now undoes hidden state via `Show All`.]]></description>
-      <pubDate>Mon, 02 Mar 2026 07:19:06 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/docktor/releases/download/v0.0.23/Docktor-Beta-v0.0.23-macos-arm64.zip"
-                 sparkle:edSignature="LYWPK4cWbvxYE2kmJVwWxBW6N+J8ohYYAklP7qfC57fB0vqrme8+xgj2J3eJbxYIdY1Rk+FJSyK8lxUcwCZYBg=="
-                 length="2642959"
+      <description sparkle:format="plain-text"><![CDATA[- Reduced rapid App Exposé double-click conflicts by consuming immediate no-window follow-up clicks after first-click activation.
+- Matched the no-window App Exposé suppression grace to macOS `NSEvent.doubleClickInterval` for user-consistent timing.
+- Added a tiny App Exposé dismiss grace window to avoid accidental instant dismiss on ultra-fast repeat clicks.]]></description>
+      <pubDate>Mon, 02 Mar 2026 10:03:14 +0000</pubDate>
+      <enclosure url="https://github.com/apotenza92/docktor/releases/download/v0.0.24-beta.1/Docktor-Beta-v0.0.24-beta.1-macos-arm64.zip"
+                 sparkle:edSignature="4QR6XlkvLtqJNECjyDDRZw7wuolAqCE66iu6HjmpxIY7eLo1gBlAhRRRAsmdUoaW0EokdEip60OMmCIV6MIaCA=="
+                 length="2643442"
                  type="application/octet-stream" />
     </item>
   </channel>
