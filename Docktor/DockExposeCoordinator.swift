@@ -27,6 +27,7 @@ final class DockExposeCoordinator: ObservableObject {
     private var appExposeInvocationToken: UUID?
     private var clickRecoveryTokenCounter: UInt64 = 0
     private var clickSequenceCounter: UInt64 = 0
+    private let appExposeDismissGraceWindow: TimeInterval = 0.02
 
     init(preferences: Preferences) {
         self.preferences = preferences
@@ -566,6 +567,13 @@ final class DockExposeCoordinator: ObservableObject {
 
         if appExposeActive {
             if currentExposeApp == clickedBundle {
+                // Guard against ultra-fast follow-up clicks immediately after opening App Exposé.
+                // Without a tiny grace window, an accidental rapid double-click can instantly dismiss it.
+                if isRecentExposeInteraction(maxAge: appExposeDismissGraceWindow) {
+                    Logger.debug("WORKFLOW: App Exposé dismiss ignored during grace window for \(clickedBundle)")
+                    return false
+                }
+
                 // User clicked the same app whose windows are in App Exposé – the Dock should dismiss
                 // App Exposé and focus the app. Reset tracking now so the next click is handled as a
                 // regular active-app click, and assert activation in case Dock focus handoff races.
@@ -699,6 +707,10 @@ final class DockExposeCoordinator: ObservableObject {
         case .appExpose:
             let windowCountNow = WindowManager.totalWindowCount(bundleIdentifier: clickedBundle)
             if windowCountNow == 0 {
+                if shouldSuppressImmediateNoWindowAppExposeClick(for: clickedBundle) {
+                    Logger.debug("APP_EXPOSE_DECISION: click appExpose consumed for \(clickedBundle) during activation grace (windowsNow=0)")
+                    return true
+                }
                 Logger.debug("APP_EXPOSE_DECISION: click appExpose skipped for \(clickedBundle) because windowsNow=0")
                 // Let Dock handle the click (e.g. create/show a window) without immediately opening App Exposé.
                 return false
@@ -976,6 +988,11 @@ final class DockExposeCoordinator: ObservableObject {
         switch preferences.firstClickBehavior {
         case .activateApp:
             Logger.debug("WORKFLOW: First click behavior=activateApp; allowing Dock activation")
+            // Mark pass-through activation so an immediate no-window App Exposé re-click
+            // can be suppressed (avoids Dock "boop" while the app is still activating).
+            recordActionExecution(action: .activateApp,
+                                  bundle: bundleIdentifier,
+                                  source: "firstClickActivatePassThrough")
             return false
         case .bringAllToFront:
             guard NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == bundleIdentifier }) else {
@@ -1322,6 +1339,18 @@ final class DockExposeCoordinator: ObservableObject {
         shouldRunAppExpose(for: bundleIdentifier,
                            windowCountHint: windowCountHint,
                            requiresMultipleWindows: preferences.firstClickAppExposeRequiresMultipleWindows)
+    }
+
+    private func shouldSuppressImmediateNoWindowAppExposeClick(for bundleIdentifier: String) -> Bool {
+        guard lastActionExecuted == .activateApp,
+              lastActionExecutedBundle == bundleIdentifier,
+              lastActionExecutedSource == "firstClickActivatePassThrough",
+              let lastAt = lastActionExecutedAt else {
+            return false
+        }
+        // Match macOS' user-configured double-click interval so this grace window
+        // feels consistent with system click timing preferences.
+        return Date().timeIntervalSince(lastAt) <= NSEvent.doubleClickInterval
     }
 
     private func shouldRunAppExpose(for bundleIdentifier: String,

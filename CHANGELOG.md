@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.0.24-beta.1]
+
+- Reduced rapid App Exposé double-click conflicts by consuming immediate no-window follow-up clicks after first-click activation.
+- Matched the no-window App Exposé suppression grace to macOS `NSEvent.doubleClickInterval` for user-consistent timing.
+- Added a tiny App Exposé dismiss grace window to avoid accidental instant dismiss on ultra-fast repeat clicks.
+
 ## [v0.0.23]
 
 - Updated defaults: first click now defaults to `Activate App`, while active-app click stays `App Exposé` with `>1 window only` OFF by default.
