@@ -5,19 +5,20 @@
     <description>Docktor update feed (beta channel)</description>
     <language>en</language>
     <item>
-      <title>Version 0.0.21</title>
-      <link>https://github.com/apotenza92/docktor/releases/tag/v0.0.21</link>
-      <sparkle:version>2190000</sparkle:version>
-      <sparkle:shortVersionString>0.0.21</sparkle:shortVersionString>
+      <title>Version 0.0.22</title>
+      <link>https://github.com/apotenza92/docktor/releases/tag/v0.0.22</link>
+      <sparkle:version>2290000</sparkle:version>
+      <sparkle:shortVersionString>0.0.22</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/apotenza92/docktor/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <description sparkle:format="plain-text"><![CDATA[- Fixed Allen-reported Dock regression cases: wrong-target/finicky `Hide App` behavior and swallowed third click during repeated App Exposé clicks.
-- Added per-slot `>1 window only` App Exposé gating for modifier rows and scroll mappings, with matching settings UI toggles and preference persistence.
-- Hardened App Exposé click-path state handling when the clicked app is already active while Exposé tracking is in progress.]]></description>
-      <pubDate>Mon, 02 Mar 2026 04:20:10 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/docktor/releases/download/v0.0.21/Docktor-Beta-v0.0.21-macos-x64.zip"
-                 sparkle:edSignature="yH4anEtPBVW03sVE0mx3/tzRKsrMcv88zYeAwhWnHCgrtSNxMVHnPhuzK3ijFb6nEwvMyHvZDMpKssFJ0ZGmCg=="
-                 length="2648306"
+      <description sparkle:format="plain-text"><![CDATA[- Restored first-click default/reset behavior to `App Exposé`.
+- Added compatibility migration + legacy fallback seeding for per-slot App Exposé `>1 window only` gates (from legacy first-click/active-click preferences).
+- Aligned scroll up/down routing with macOS Natural vs Standard scrolling mode and added unit coverage for both mappings.
+- Hardened settings shell automation with menu-bar count wait/retry and made `scripts/release.sh` run required pre-tag validation by default (waiver now requires an issue reference).]]></description>
+      <pubDate>Mon, 02 Mar 2026 06:06:17 +0000</pubDate>
+      <enclosure url="https://github.com/apotenza92/docktor/releases/download/v0.0.22/Docktor-Beta-v0.0.22-macos-x64.zip"
+                 sparkle:edSignature="qTi2JsxZlnwxbT6DSE2pGGGOTgq+At+rzUMC91YGKvmfklJSuQ9V7XsfejfRB11jTsqbsVtc0N2Kh7dip9l7Cg=="
+                 length="2649218"
                  type="application/octet-stream" />
     </item>
   </channel>
