@@ -192,13 +192,15 @@ final class DockClickEventTap {
         let location = event.location
         let flags = event.flags
         
-        // Use the first non-zero delta we can get, preferring point deltas for sensitivity.
+        let isContinuous = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
+
         let pointDelta = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1) // pixel-ish for trackpads
         let fixedDelta = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1) / 256.0 // convert 16.16 fixed to float
         let coarseDelta = event.getDoubleValueField(.scrollWheelEventDeltaAxis1) // wheel notch count
-        let delta = [pointDelta, fixedDelta, coarseDelta].first(where: { $0 != 0 }) ?? 0
-
-        let isContinuous = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
+        let delta = DockDecisionEngine.resolvedScrollDelta(pointDelta: pointDelta,
+                                                           fixedDelta: fixedDelta,
+                                                           coarseDelta: coarseDelta,
+                                                           isContinuous: isContinuous)
         let scrollPhase = Int(event.getIntegerValueField(.scrollWheelEventScrollPhase))
         let momentumPhase = Int(event.getIntegerValueField(.scrollWheelEventMomentumPhase))
 
@@ -243,7 +245,7 @@ final class DockClickEventTap {
         let resolvedDirection = DockDecisionEngine.resolvedScrollDirection(delta: delta)
         let direction: ScrollDirection = resolvedDirection == .up ? .up : .down
 
-        Logger.debug("DockClickEventTap: Raw scroll at \(location.x), \(location.y) (delta: \(delta), dir: \(direction == .up ? "up" : "down"), continuous: \(isContinuous))")
+        Logger.debug("DockClickEventTap: Raw scroll at \(location.x), \(location.y) (point: \(pointDelta), fixed: \(fixedDelta), coarse: \(coarseDelta), delta: \(delta), dir: \(direction == .up ? "up" : "down"), continuous: \(isContinuous))")
         let shouldConsume = scrollHandler?(location, direction, flags) ?? false
         Logger.debug("DockClickEventTap: Scroll consume=\(shouldConsume)")
 

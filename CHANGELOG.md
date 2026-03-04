@@ -6,6 +6,10 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.0.25]
+
+- Fixed mixed-device scroll direction handling by preferring discrete wheel delta fields for non-continuous mouse events, improving compatibility with per-device remappers like UnnaturalScrollWheels.
+
 ## [v0.0.24]
 
 - Reduced rapid App Exposé double-click conflicts by consuming immediate no-window follow-up clicks after first-click activation.

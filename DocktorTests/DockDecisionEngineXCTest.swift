@@ -65,4 +65,50 @@ final class DockDecisionEngineXCTest: XCTestCase {
             .down
         )
     }
+
+    func testResolvedScrollDeltaPrefersPointForContinuousDevices() {
+        XCTAssertEqual(
+            DockDecisionEngine.resolvedScrollDelta(
+                pointDelta: -8,
+                fixedDelta: -1,
+                coarseDelta: 1,
+                isContinuous: true
+            ),
+            -8
+        )
+    }
+
+    func testResolvedScrollDeltaPrefersCoarseForDiscreteWheelDevices() {
+        XCTAssertEqual(
+            DockDecisionEngine.resolvedScrollDelta(
+                pointDelta: -8,
+                fixedDelta: -1,
+                coarseDelta: 1,
+                isContinuous: false
+            ),
+            1
+        )
+    }
+
+    func testResolvedScrollDeltaFallsBackWhenPreferredFieldMissing() {
+        XCTAssertEqual(
+            DockDecisionEngine.resolvedScrollDelta(
+                pointDelta: 0,
+                fixedDelta: 0,
+                coarseDelta: -1,
+                isContinuous: true
+            ),
+            -1
+        )
+
+        XCTAssertEqual(
+            DockDecisionEngine.resolvedScrollDelta(
+                pointDelta: 0,
+                fixedDelta: 2,
+                coarseDelta: 0,
+                isContinuous: false
+            ),
+            2
+        )
+    }
 }

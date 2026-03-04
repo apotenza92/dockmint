@@ -78,10 +78,21 @@ enum DockDecisionEngine {
         }
     }
 
+    static func resolvedScrollDelta(pointDelta: Double,
+                                    fixedDelta: Double,
+                                    coarseDelta: Double,
+                                    isContinuous: Bool) -> Double {
+        // Continuous devices (trackpad/magic mouse) are best represented by point deltas.
+        // Discrete wheels should prefer coarse/fixed deltas because some per-device remappers
+        // only rewrite those fields (which can leave point delta sign stale).
+        let priority = isContinuous
+            ? [pointDelta, fixedDelta, coarseDelta]
+            : [coarseDelta, fixedDelta, pointDelta]
+
+        return priority.first(where: { $0 != 0 }) ?? 0
+    }
+
     static func resolvedScrollDirection(delta: Double) -> DecisionScrollDirection {
-        // Use event delta direction directly. macOS (and input tools like LinearMouse)
-        // already apply per-device scroll direction policy before we receive the event.
-        // This keeps mapping aligned with the user's actual device expectations.
         return delta > 0 ? .up : .down
     }
 }
