@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.0.30]
+
+- Fixed Sparkle feed URL injection for packaged builds by parameterizing `SUFeedURL` in `Docktor/Info.plist` (`$(SU_FEED_URL)`) and overriding it per release matrix entry.
+- Beta artifacts now embed the Beta appcast URL directly (`beta-arm64` / `beta-x64`), ensuring Beta users receive the Beta track (which already advances to newer stable versions when they surpass prereleases).
+
 ## [v0.0.29]
 
 - Fixed release packaging so Sparkle feed URLs are channel+architecture-specific at build time (`stable-arm64`, `stable-x64`, `beta-arm64`, `beta-x64`) instead of a single hardcoded stable feed.

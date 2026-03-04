@@ -416,7 +416,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.0.29;
+				MARKETING_VERSION = 0.0.30;
 				PRODUCT_BUNDLE_IDENTIFIER = pzc.Dockter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -426,6 +426,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+				SU_FEED_URL = https://raw.githubusercontent.com/apotenza92/docktor/main/appcasts/stable-arm64.xml;
 			};
 			name = Debug;
 		};
@@ -450,7 +451,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.0.29;
+				MARKETING_VERSION = 0.0.30;
 				PRODUCT_BUNDLE_IDENTIFIER = pzc.Dockter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -460,6 +461,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+				SU_FEED_URL = https://raw.githubusercontent.com/apotenza92/docktor/main/appcasts/stable-arm64.xml;
 			};
 			name = Release;
 		};
