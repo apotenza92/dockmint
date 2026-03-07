@@ -2,7 +2,9 @@
 
 ![Docktor icon](Docktor/Assets.xcassets/AppIcon.appiconset/icon_256x256.png)
 
-Docktor is a lightweight macOS menu bar app that lets you run actions by clicking or scrolling on Dock icons (like executing App Expose, Hiding, Revealing, Minimising etc.)
+Docktor is a lightweight macOS menu bar app that lets you run actions by clicking or scrolling on Dock icons (such as executing App Expose, Hiding, Revealing, Minimising etc.)
+
+Kind of [DockDoor](https://dockdoor.net/) 'Lite' using only macOS' built in features.
 
 ## Install
 
