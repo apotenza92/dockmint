@@ -5,19 +5,19 @@
     <description>Docktor update feed (beta channel)</description>
     <language>en</language>
     <item>
-      <title>Version 0.0.36</title>
-      <link>https://github.com/apotenza92/docktor/releases/tag/v0.0.36</link>
-      <sparkle:version>3690000</sparkle:version>
-      <sparkle:shortVersionString>0.0.36</sparkle:shortVersionString>
+      <title>Version 0.0.37</title>
+      <link>https://github.com/apotenza92/docktor/releases/tag/v0.0.37</link>
+      <sparkle:version>3790000</sparkle:version>
+      <sparkle:shortVersionString>0.0.37</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/apotenza92/docktor/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <description sparkle:format="plain-text"><![CDATA[- Fixed intermittent Dock icon hang/context-menu regressions on the default `activateApp -> active-app App Exposé` path by hardening click lifecycle recovery in `DockExposeCoordinator` and `DockClickEventTap`.
-- Added explicit stale Exposé tracking expiry/cleanup and deferred active-click `App Exposé` triggering safeguards to prevent collapsed or missed invokes during repeated cycles.
-- Added `scripts/automated_default_active_app_expose_stress.sh` for deterministic real Dock-click stress validation of the default active-app App Exposé workflow.]]></description>
-      <pubDate>Mon, 09 Mar 2026 12:11:02 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/docktor/releases/download/v0.0.36/Docktor-Beta-v0.0.36-macos-x64.zip"
-                 sparkle:edSignature="N9/2VUy6cdoWGSBEZbNkYuUurqc/LNofGAh6LdWQgp01Vwv+y3h8InBdmsULFAjWhZcWeUc9M6McQL4elyegBg=="
-                 length="2684888"
+      <description sparkle:format="plain-text"><![CDATA[- Fixed default active-app App Exposé bounce-out by removing mouse-down pre-triggering and enforcing mouse-up pass-through trigger ordering.
+- Added rapid second-click promotion logic for default `first click = Activate App` flows so quick double-clicks can still execute mapped active-click actions (including App Exposé) using macOS double-click timing.
+- Added and hardened double-click regression harnesses (`automated_default_active_app_expose_double_click.sh`, `automated_default_active_click_double_click_generic.sh`) plus shared click-hold support in `scripts/lib/test_common.sh`.]]></description>
+      <pubDate>Mon, 09 Mar 2026 13:45:36 +0000</pubDate>
+      <enclosure url="https://github.com/apotenza92/docktor/releases/download/v0.0.37/Docktor-Beta-v0.0.37-macos-x64.zip"
+                 sparkle:edSignature="ORDdMI1XSf3dDXYvuVg+Ezh0bk/p3kRZDOJCgFYoO1Wv6wt4hFYeEus5nk+0g7UOnL9MPLQIdSL8aVYcJEimBw=="
+                 length="2687003"
                  type="application/octet-stream" />
     </item>
   </channel>
