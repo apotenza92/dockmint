@@ -5,18 +5,19 @@
     <description>Docktor update feed (stable channel)</description>
     <language>en</language>
     <item>
-      <title>Version 0.0.35</title>
-      <link>https://github.com/apotenza92/docktor/releases/tag/v0.0.35</link>
-      <sparkle:version>3590000</sparkle:version>
-      <sparkle:shortVersionString>0.0.35</sparkle:shortVersionString>
+      <title>Version 0.0.36</title>
+      <link>https://github.com/apotenza92/docktor/releases/tag/v0.0.36</link>
+      <sparkle:version>3690000</sparkle:version>
+      <sparkle:shortVersionString>0.0.36</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/apotenza92/docktor/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <description sparkle:format="plain-text"><![CDATA[- Fixed an App Exposé regression where the active-app second-click transition could begin and then immediately collapse again because Dock pressed-state recovery posted a synthetic release into the Exposé animation window.
-- Tightened the local multi-Space App Exposé harness so it re-establishes the active-app precondition without reintroducing a focus race before the second click.]]></description>
-      <pubDate>Mon, 09 Mar 2026 08:27:04 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/docktor/releases/download/v0.0.35/Docktor-v0.0.35-macos-arm64.zip"
-                 sparkle:edSignature="WGpWcAN+6k86ANDrzPBA1Z1YoOI8IKuHZipkW45rqtQ1ZmE236riOGX0WOff5yLNz6htKFlfR6WG+VoPaRlcCw=="
-                 length="4438299"
+      <description sparkle:format="plain-text"><![CDATA[- Fixed intermittent Dock icon hang/context-menu regressions on the default `activateApp -> active-app App Exposé` path by hardening click lifecycle recovery in `DockExposeCoordinator` and `DockClickEventTap`.
+- Added explicit stale Exposé tracking expiry/cleanup and deferred active-click `App Exposé` triggering safeguards to prevent collapsed or missed invokes during repeated cycles.
+- Added `scripts/automated_default_active_app_expose_stress.sh` for deterministic real Dock-click stress validation of the default active-app App Exposé workflow.]]></description>
+      <pubDate>Mon, 09 Mar 2026 12:11:02 +0000</pubDate>
+      <enclosure url="https://github.com/apotenza92/docktor/releases/download/v0.0.36/Docktor-v0.0.36-macos-arm64.zip"
+                 sparkle:edSignature="F19a64CXH+bUp0mTQ1obst0VWW1DVEDyCs9hPmSBb1IpMxBF9R2WdMBmD4O80OxM3KkPpcl0fgiKThcH6fR1DQ=="
+                 length="4449663"
                  type="application/octet-stream" />
     </item>
   </channel>
