@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.0.37]
+
+- Fixed default active-app App Exposé bounce-out by removing mouse-down pre-triggering and enforcing mouse-up pass-through trigger ordering.
+- Added rapid second-click promotion logic for default `first click = Activate App` flows so quick double-clicks can still execute mapped active-click actions (including App Exposé) using macOS double-click timing.
+- Added and hardened double-click regression harnesses (`automated_default_active_app_expose_double_click.sh`, `automated_default_active_click_double_click_generic.sh`) plus shared click-hold support in `scripts/lib/test_common.sh`.
+
 ## [v0.0.36]
 
 - Fixed intermittent Dock icon hang/context-menu regressions on the default `activateApp -> active-app App Exposé` path by hardening click lifecycle recovery in `DockExposeCoordinator` and `DockClickEventTap`.

@@ -33,6 +33,8 @@ run_stage() {
 run_stage "xcodebuild test" xcodebuild -project Docktor.xcodeproj -scheme Docktor -configuration Debug test -quiet
 run_stage "decision engine CLI tests" ./scripts/run_decision_engine_tests.sh
 run_stage "automated app expose checks" ./scripts/automated_app_expose_checks.sh
+run_stage "automated default active-app App Exposé double-click stress" ./scripts/automated_default_active_app_expose_double_click.sh
+run_stage "automated default active-click generic double-click stress" ./scripts/automated_default_active_click_double_click_generic.sh
 run_stage "automated scroll direction gui checks" ./scripts/automated_scroll_direction_checks.sh
 run_stage "automated settings shell checks" ./scripts/automated_settings_shell_checks.sh
 run_stage "automated issue1 checks" ./scripts/automated_issue1_checks.sh

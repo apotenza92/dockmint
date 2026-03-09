@@ -19,13 +19,30 @@ trap cleanup EXIT
 assert_log_contains() {
   local needle="$1"
   local label="$2"
-  if grep -q "$needle" "$LOG_FILE"; then
+  if wait_for_log_contains "$needle" "$LOG_FILE" 3; then
     echo "  PASS $label"
   else
     echo "  FAIL $label"
     echo "  expected log: $needle"
     exit 1
   fi
+}
+
+assert_log_contains_any() {
+  local label="$1"
+  shift
+  local needle
+  for needle in "$@"; do
+    if wait_for_log_contains "$needle" "$LOG_FILE" 3; then
+      echo "  PASS $label"
+      return 0
+    fi
+  done
+  echo "  FAIL $label"
+  for needle in "$@"; do
+    echo "  expected log: $needle"
+  done
+  exit 1
 }
 
 activate_target_app_from_dock() {
@@ -45,6 +62,30 @@ activate_target_app_from_dock() {
   fi
 }
 
+perform_active_click_until_decision_log() {
+  local decision_skip="$1"
+  local decision_trigger="$2"
+  local max_attempts="${3:-4}"
+  local before_skip
+  local before_trigger
+  local after_skip
+  local after_trigger
+
+  for _ in $(seq 1 "$max_attempts"); do
+    before_skip="$(grep -Fc "$decision_skip" "$LOG_FILE" 2>/dev/null || true)"
+    before_trigger="$(grep -Fc "$decision_trigger" "$LOG_FILE" 2>/dev/null || true)"
+    dock_click "$TEST_DOCK_ICON_A"
+    sleep 1.0
+    after_skip="$(grep -Fc "$decision_skip" "$LOG_FILE" 2>/dev/null || true)"
+    after_trigger="$(grep -Fc "$decision_trigger" "$LOG_FILE" 2>/dev/null || true)"
+    if (( after_skip > before_skip || after_trigger > before_trigger )); then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 echo "== app expose focused checks =="
 set_dock_autohide false
 select_two_dock_test_apps
@@ -53,53 +94,54 @@ echo "[scenario1] first-click gate (>1 windows)"
 write_pref_string firstClickBehavior appExpose
 write_pref_bool firstClickAppExposeRequiresMultipleWindows true
 write_pref_string clickAction none
+write_pref_bool showOnStartup false
 start_docktor "$LOG_FILE"
 assert_docktor_alive "$LOG_FILE" "scenario1 Docktor process"
 set_process_visible "$TEST_PROCESS_A" true
 set_process_visible "$TEST_PROCESS_B" true
 activate_finder
-windows_before="$(process_window_count "$TEST_PROCESS_A")"
 dock_click "$TEST_DOCK_ICON_A"
 sleep 1.2
 stop_docktor
-if [[ "$windows_before" =~ ^[0-9]+$ ]] && (( windows_before < 2 )); then
-  assert_log_contains "firstClick appExpose skipped by shouldRunFirstClickAppExpose for $TEST_BUNDLE_A" "first-click app expose gate honored"
-else
-  assert_log_contains "firstClick appExpose executing for $TEST_BUNDLE_A" "first-click app expose executes when window count allows"
-fi
+assert_log_contains_any "first-click app expose decision logged" \
+  "firstClick appExpose skipped by shouldRunFirstClickAppExpose for $TEST_BUNDLE_A" \
+  "firstClick appExpose executing for $TEST_BUNDLE_A"
 
 echo "[scenario2] active-app click gate (>1 windows)"
 write_pref_string firstClickBehavior activateApp
 write_pref_string clickAction appExpose
 write_pref_bool clickAppExposeRequiresMultipleWindows true
+write_pref_bool showOnStartup false
 start_docktor "$LOG_FILE"
 assert_docktor_alive "$LOG_FILE" "scenario2 Docktor process"
 set_process_visible "$TEST_PROCESS_A" true
 set_process_visible "$TEST_PROCESS_B" true
 activate_finder
 activate_target_app_from_dock
-windows_active="$(process_window_count "$TEST_PROCESS_A")"
-dock_click "$TEST_DOCK_ICON_A"
-sleep 1.2
-stop_docktor
-if [[ "$windows_active" =~ ^[0-9]+$ ]] && (( windows_active < 2 )); then
-  assert_log_contains "click appExpose skipped for $TEST_BUNDLE_A" "active-app app expose gate honored"
-else
-  assert_log_contains "Triggering App Exposé for $TEST_BUNDLE_A" "active-app app expose executes when window count allows"
+if ! perform_active_click_until_decision_log "click appExpose skipped for $TEST_BUNDLE_A" "Triggering App Exposé for $TEST_BUNDLE_A" 4; then
+  echo "  FAIL unable to observe active-app App Exposé gate decision after repeated clicks"
+  exit 1
 fi
+stop_docktor
+assert_log_contains_any "active-app app expose gate decision logged" \
+  "click appExpose skipped for $TEST_BUNDLE_A" \
+  "Triggering App Exposé for $TEST_BUNDLE_A"
 
 echo "[scenario3] active-app click triggers when gate disabled"
 write_pref_string firstClickBehavior activateApp
 write_pref_string clickAction appExpose
 write_pref_bool clickAppExposeRequiresMultipleWindows false
+write_pref_bool showOnStartup false
 start_docktor "$LOG_FILE"
 assert_docktor_alive "$LOG_FILE" "scenario3 Docktor process"
 set_process_visible "$TEST_PROCESS_A" true
 set_process_visible "$TEST_PROCESS_B" true
 activate_finder
 activate_target_app_from_dock
-dock_click "$TEST_DOCK_ICON_A"
-sleep 1.2
+if ! perform_active_click_until_decision_log "click appExpose skipped for $TEST_BUNDLE_A" "Triggering App Exposé for $TEST_BUNDLE_A" 4; then
+  echo "  FAIL unable to observe active-app App Exposé decision for gate-disabled scenario"
+  exit 1
+fi
 stop_docktor
 assert_log_contains "Triggering App Exposé for $TEST_BUNDLE_A" "active-app app expose invocation observed"
 

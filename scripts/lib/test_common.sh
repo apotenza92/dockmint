@@ -615,12 +615,18 @@ dock_icon_center() {
     | awk -F',' '{gsub(/ /,""); printf "%d,%d", int($1+$3/2), int($2+$4/2)}'
 }
 
-dock_click() {
+dock_click_with_hold() {
   local icon_name="$1"
+  local hold_ms="${2:-60}"
   require_cliclick_bin
   local center
   center="$(dock_icon_center "$icon_name")" || return 1
-  "$CLICLICK_BIN" "dd:$center" "w:60" "du:$center"
+  "$CLICLICK_BIN" "dd:$center" "w:$hold_ms" "du:$center"
+}
+
+dock_click() {
+  local icon_name="$1"
+  dock_click_with_hold "$icon_name" 60
 }
 
 space_key_code() {
