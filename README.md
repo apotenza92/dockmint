@@ -1,6 +1,6 @@
 # Docktor
 
-![Docktor icon](Docktor/Assets.xcassets/AppIcon.appiconset/icon_256x256.png)
+<img src="Docktor/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" alt="Docktor icon" width="96" />
 
 <a href="https://apotenza92.github.io/docktor/">
   <img src="https://img.shields.io/badge/Download-Docktor-f0a050?style=for-the-badge&logo=apple&logoColor=white" alt="Download Docktor" height="40">
