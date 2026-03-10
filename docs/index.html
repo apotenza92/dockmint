@@ -624,10 +624,17 @@
           line-height: 1.55;
         "
       >
-        Customise Dock actions when app icons are clicked, double-clicked, or
-        scrolled, including App Exposé (show all windows for that app), Bring
-        All to Front, Hide App, Hide Others, Minimize All, Quit App, Activate
-        App, and Single App Mode.
+        Customize Dock icon click, double-click, and scroll actions, including
+        App Exposé (show all windows for that app), Bring All to Front, Hide
+        App, Hide Others, Minimize All, Quit App, Activate App, and Single App
+        Mode.
+      </p>
+
+      <p class="meta-note" id="meta-note">
+        <strong>Default setup:</strong> By default, double clicking a Dock icon
+        opens App Exposé to show all open windows for that app. macOS 13.0 or
+        later. After first launch, grant Accessibility and Input Monitoring in
+        System Settings.
       </p>
 
       <div style="display: flex; justify-content: center; margin-bottom: 1rem">
@@ -707,12 +714,6 @@ brew install --cask apotenza92/tap/docktor</code
         Beta installs side by side and may contain bugs or incomplete changes.
       </div>
 
-      <p class="meta-note" id="meta-note">
-        <strong>Default setup:</strong> Docktor ships with double click mapped
-        to App Exposé. macOS 13.0 or later. After first launch, grant
-        Accessibility and Input Monitoring in System Settings.
-      </p>
-
       <p
         style="
           font-size: 0.95rem;
@@ -740,20 +741,6 @@ brew install --cask apotenza92/tap/docktor</code
         </a>
       </p>
 
-      <p
-        style="
-          font-size: 0.7rem;
-          color: var(--text-subtle);
-          margin-top: 2rem;
-          max-width: 500px;
-          margin-left: auto;
-          margin-right: auto;
-          line-height: 1.4;
-        "
-      >
-        <strong>Install Note:</strong> Manual installs use the GitHub release
-        zip. Homebrew installs track the same channel selection shown above.
-      </p>
     </div>
 
     <script>
@@ -858,15 +845,90 @@ brew install --cask apotenza92/tap/docktor</code
 
       const repo = "apotenza92/docktor";
       let currentChannel = "stable";
-      let currentMacArch = detectMacArch();
+      let currentMacArch = "arm64";
       let releaseModel = null;
 
-      function detectMacArch() {
-        const info = `${navigator.platform || ""} ${navigator.userAgent || ""}`.toLowerCase();
-        if (info.includes("intel")) {
+      function normalizeDetectedArch(value) {
+        const arch = `${value || ""}`.toLowerCase();
+        if (!arch) return null;
+
+        if (
+          arch.includes("arm") ||
+          arch.includes("aarch") ||
+          arch.includes("apple")
+        ) {
+          return "arm64";
+        }
+
+        if (
+          arch.includes("x86") ||
+          arch.includes("x64") ||
+          arch.includes("amd64") ||
+          arch.includes("intel")
+        ) {
           return "x64";
         }
-        return "arm64";
+
+        return null;
+      }
+
+      function detectMacArchFromWebGL() {
+        try {
+          const canvas = document.createElement("canvas");
+          const gl =
+            canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+          if (!gl) return null;
+
+          const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
+          const renderer = debugInfo
+            ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+            : gl.getParameter(gl.RENDERER);
+
+          return normalizeDetectedArch(renderer);
+        } catch (error) {
+          console.warn("WebGL architecture detection failed", error);
+          return null;
+        }
+      }
+
+      function detectMacArchFromUserAgent() {
+        const info =
+          `${navigator.platform || ""} ${navigator.userAgent || ""}`.toLowerCase();
+
+        if (info.includes("arm") || info.includes("aarch64") || info.includes("apple silicon")) {
+          return "arm64";
+        }
+
+        if (
+          info.includes("x86_64") ||
+          info.includes("x64") ||
+          info.includes("amd64")
+        ) {
+          return "x64";
+        }
+
+        if (info.includes("mac")) {
+          return "arm64";
+        }
+
+        return info.includes("intel") ? "x64" : "arm64";
+      }
+
+      async function detectMacArch() {
+        const uaData = navigator.userAgentData;
+        if (uaData?.getHighEntropyValues) {
+          try {
+            const values = await uaData.getHighEntropyValues(["architecture"]);
+            const detected = normalizeDetectedArch(values.architecture);
+            if (detected) {
+              return detected;
+            }
+          } catch (error) {
+            console.warn("UA client hints architecture detection failed", error);
+          }
+        }
+
+        return detectMacArchFromWebGL() || detectMacArchFromUserAgent();
       }
 
       function parseTag(tag) {
@@ -1009,19 +1071,82 @@ brew install --cask apotenza92/tap/docktor</code
         display.className = `version-display visible ${channelClass}`;
       }
 
+      function getHomebrewCommand() {
+        return currentChannel === "beta"
+          ? "brew tap apotenza92/tap\nbrew install --cask apotenza92/tap/docktor@beta"
+          : "brew tap apotenza92/tap\nbrew install --cask apotenza92/tap/docktor";
+      }
+
+      function setCopyButtonState(copied) {
+        const copyBtn = document.getElementById("mac-homebrew-copy");
+        if (!copyBtn) return;
+
+        if (copied) {
+          copyBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg><span>Copied!</span>';
+          copyBtn.classList.add("copied");
+          return;
+        }
+
+        copyBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg><span>Copy</span>';
+        copyBtn.classList.remove("copied");
+      }
+
+      async function copyTextToClipboard(text) {
+        if (navigator.clipboard?.writeText) {
+          try {
+            await navigator.clipboard.writeText(text);
+            return;
+          } catch (error) {
+            console.warn("navigator.clipboard.writeText failed, falling back", error);
+          }
+        }
+
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        textarea.style.pointerEvents = "none";
+        document.body.appendChild(textarea);
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+
+        const copied = document.execCommand("copy");
+        document.body.removeChild(textarea);
+
+        if (!copied) {
+          throw new Error("Clipboard copy failed");
+        }
+      }
+
+      async function handleHomebrewCopy(event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        try {
+          await copyTextToClipboard(getHomebrewCommand());
+          setCopyButtonState(true);
+          window.setTimeout(() => setCopyButtonState(false), 2000);
+        } catch (error) {
+          console.error("Failed to copy:", error);
+          setCopyButtonState(false);
+        }
+      }
+
       function updateHomebrew() {
         const label = document.getElementById("mac-homebrew-label");
         const code = document.getElementById("mac-homebrew-code");
 
         if (currentChannel === "beta") {
           label.textContent = "Or install Docktor Beta via Homebrew:";
-          code.textContent =
-            "brew tap apotenza92/tap\nbrew install --cask apotenza92/tap/docktor@beta";
         } else {
           label.textContent = "Or install via Homebrew:";
-          code.textContent =
-            "brew tap apotenza92/tap\nbrew install --cask apotenza92/tap/docktor";
         }
+
+        code.textContent = getHomebrewCommand();
+        setCopyButtonState(false);
       }
 
       function render() {
@@ -1114,24 +1239,11 @@ brew install --cask apotenza92/tap/docktor</code
           .addEventListener("click", () => setMacArch("x64"));
 
         document
+          .getElementById("mac-homebrew-copy")
+          .addEventListener("click", handleHomebrewCopy);
+        document
           .getElementById("mac-homebrew-box")
-          .addEventListener("click", async () => {
-            const code = document.getElementById("mac-homebrew-code").textContent;
-            const copyBtn = document.getElementById("mac-homebrew-copy");
-            try {
-              await navigator.clipboard.writeText(code);
-              copyBtn.innerHTML =
-                '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg><span>Copied!</span>';
-              copyBtn.classList.add("copied");
-              setTimeout(() => {
-                copyBtn.innerHTML =
-                  '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg><span>Copy</span>';
-                copyBtn.classList.remove("copied");
-              }, 2000);
-            } catch (error) {
-              console.error("Failed to copy:", error);
-            }
-          });
+          .addEventListener("click", handleHomebrewCopy);
 
         const btn = document.getElementById("download-btn");
         btn.addEventListener("click", () => {
@@ -1146,6 +1258,14 @@ brew install --cask apotenza92/tap/docktor</code
         });
 
         render();
+        detectMacArch()
+          .then((arch) => {
+            currentMacArch = arch;
+            render();
+          })
+          .catch((error) => {
+            console.warn("Architecture detection fallback used", error);
+          });
         fetchReleaseInfo().catch((error) => {
           console.error(error);
           updateVersionDisplay("Latest release on GitHub", currentChannel);
