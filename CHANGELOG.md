@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.0.39]
+
+- Changed the shipped defaults so `Show menu bar icon` starts enabled, `Show settings on startup` stays off after the first run, and `Start Docktor Beta at login` remains off by default.
+- Removed the development-only preference overrides that forced the menu bar icon and startup settings window on, so local builds now match the shipped app behavior.
+- Added a settings-shell regression that verifies first launch opens settings once and subsequent launches stay closed when `showOnStartup` is disabled.
+
 ## [v0.0.38-beta.1]
 
 - Fixed beta branding so the settings window, status item accessibility label, and menu item labels use the bundle product name consistently (`Docktor Beta` for beta builds).

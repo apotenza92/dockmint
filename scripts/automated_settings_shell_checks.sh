@@ -11,6 +11,7 @@ cleanup() {
   stop_docktor
   write_pref_bool showMenuBarIcon true
   write_pref_bool showOnStartup false
+  write_pref_bool firstLaunchCompleted true
   ensure_no_docktor
   restore_dock_state
 }
@@ -85,9 +86,36 @@ if [[ "$off_count" -ne "$base_count" ]]; then
   exit 1
 fi
 
+echo "[settings-shell] first launch opens settings once"
+write_pref_bool showMenuBarIcon true
+write_pref_bool showOnStartup false
+delete_pref firstLaunchCompleted
+
+start_docktor /tmp/docktor-settings-shell-first-launch.log
+wait_for_log_contains "Opening settings window" /tmp/docktor-settings-shell-first-launch.log 6 || true
+if ! log_contains "Opening settings window" /tmp/docktor-settings-shell-first-launch.log; then
+  echo "  FAIL: expected first launch to open settings"
+  exit 1
+fi
+if ! wait_for_pref_bool firstLaunchCompleted 1 5; then
+  first_launch_completed="$(read_pref_bool firstLaunchCompleted)"
+  echo "  FAIL: expected firstLaunchCompleted to be persisted after first launch"
+  exit 1
+fi
+stop_docktor
+
+start_docktor /tmp/docktor-settings-shell-second-launch.log
+sleep 2
+stop_docktor
+if log_contains "Opening settings window" /tmp/docktor-settings-shell-second-launch.log; then
+  echo "  FAIL: expected subsequent launch to keep settings closed when showOnStartup is off"
+  exit 1
+fi
+
 echo "[settings-shell] --settings fail-safe"
 write_pref_bool showMenuBarIcon false
 write_pref_bool showOnStartup false
+write_pref_bool firstLaunchCompleted true
 start_docktor /tmp/docktor-settings-shell-args.log --settings
 wait_for_log_contains "Launch argument requested settings window" /tmp/docktor-settings-shell-args.log 6 || true
 wait_for_log_contains "Opening settings window" /tmp/docktor-settings-shell-args.log 6 || true

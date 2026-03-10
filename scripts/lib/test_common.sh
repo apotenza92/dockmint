@@ -1033,3 +1033,31 @@ write_pref_bool() {
   local value="$2"
   defaults write "$BUNDLE_ID" "$key" -bool "$value"
 }
+
+delete_pref() {
+  local key="$1"
+  defaults delete "$BUNDLE_ID" "$key" >/dev/null 2>&1 || true
+}
+
+read_pref_bool() {
+  local key="$1"
+  defaults read "$BUNDLE_ID" "$key" 2>/dev/null || echo "__missing__"
+}
+
+wait_for_pref_bool() {
+  local key="$1"
+  local expected="$2"
+  local timeout_seconds="${3:-5}"
+  local deadline=$((SECONDS + timeout_seconds))
+  local value=""
+
+  while (( SECONDS <= deadline )); do
+    value="$(read_pref_bool "$key")"
+    if [[ "$value" == "$expected" ]]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  [[ "$(read_pref_bool "$key")" == "$expected" ]]
+}

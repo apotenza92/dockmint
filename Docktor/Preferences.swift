@@ -303,28 +303,12 @@ final class Preferences: ObservableObject {
 
     @Published var showOnStartup: Bool {
         didSet {
-            #if DEBUG
-            if !showOnStartup && !Self.isAutomatedTestSuite {
-                settingsStore.set(true, for: Self.showOnStartupPreferenceKey)
-                showOnStartup = true
-                Logger.log("Preferences: Forced showOnStartup on in development build")
-                return
-            }
-            #endif
             settingsStore.set(showOnStartup, for: Self.showOnStartupPreferenceKey)
         }
     }
 
     @Published var showMenuBarIcon: Bool {
         didSet {
-            #if DEBUG
-            if !showMenuBarIcon && !Self.isAutomatedTestSuite {
-                settingsStore.set(true, for: Self.showMenuBarIconPreferenceKey)
-                showMenuBarIcon = true
-                Logger.log("Preferences: Forced showMenuBarIcon on in development build")
-                return
-            }
-            #endif
             settingsStore.set(showMenuBarIcon, for: Self.showMenuBarIconPreferenceKey)
         }
     }
@@ -516,16 +500,8 @@ final class Preferences: ObservableObject {
         Self.seedIfMissing(shiftOptionScrollDownAction, in: userDefaults, forKey: shiftOptionScrollDownActionKey)
 
         // General settings defaults
-        var showOnStartup = settingsStore.value(for: Self.showOnStartupPreferenceKey)
-        var showMenuBarIcon = settingsStore.value(for: Self.showMenuBarIconPreferenceKey)
-        #if DEBUG
-        if !Self.isAutomatedTestSuite {
-            showOnStartup = true
-            showMenuBarIcon = true
-            settingsStore.set(true, for: Self.showOnStartupPreferenceKey)
-            settingsStore.set(true, for: Self.showMenuBarIconPreferenceKey)
-        }
-        #endif
+        let showOnStartup = settingsStore.value(for: Self.showOnStartupPreferenceKey)
+        let showMenuBarIcon = settingsStore.value(for: Self.showMenuBarIconPreferenceKey)
         let firstLaunchCompleted = settingsStore.value(for: Self.firstLaunchCompletedPreferenceKey)
 
         // Login item: prefer system status; fall back to stored preference
