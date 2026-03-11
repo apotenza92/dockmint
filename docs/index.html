@@ -45,6 +45,7 @@
         --channel-accent-soft: var(--stable-accent-soft);
         --channel-accent-border: var(--stable-accent-border);
         --channel-accent-glow: var(--stable-accent-glow);
+        --selection-gap: 2rem;
         --btn-shadow: rgba(240, 160, 80, 0.25);
         --btn-shadow-hover: rgba(240, 160, 80, 0.35);
         --code-bg: #f4f4f4;
@@ -139,7 +140,7 @@
         flex-direction: column;
         align-items: center;
         justify-content: flex-start;
-        gap: 2rem;
+        gap: var(--selection-gap);
       }
 
       .mac-homebrew-section {
@@ -148,6 +149,10 @@
 
       .selection-flow {
         position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--selection-gap);
       }
 
       .connector-svg {
@@ -178,36 +183,6 @@
         }
       }
 
-      .platform-toggle {
-        display: flex;
-        justify-content: center;
-        margin-bottom: 2rem;
-        position: relative;
-        z-index: 1;
-      }
-
-      .platform-btn {
-        background: none;
-        border: 1px solid var(--border);
-        padding: 0.5rem 1rem;
-        font-size: 0.85rem;
-        cursor: default;
-        color: var(--text-muted);
-        transition: all 0.2s ease;
-      }
-
-      .platform-btn:first-child {
-        border-radius: 8px;
-      }
-
-      .platform-btn.active {
-        background: var(--channel-accent);
-        border-color: var(--channel-accent);
-        color: white;
-        position: relative;
-        z-index: 1;
-      }
-
       .beta-notice {
         display: none;
         background: var(--channel-accent-soft);
@@ -231,40 +206,103 @@
         color: var(--channel-accent);
       }
 
-      .version-display {
-        font-size: 0.8rem;
-        font-weight: 500;
-        text-align: center;
-        margin-bottom: 1rem;
-        display: none;
-      }
-
-      .version-display.visible {
-        display: block;
-      }
-
-      .version-display.stable {
-        color: var(--stable-accent);
-      }
-
-      .version-display.beta {
-        color: var(--beta-accent);
+      .github-button-row {
+        display: flex;
+        justify-content: center;
+        margin-top: 2rem;
+        margin-bottom: 1.25rem;
       }
 
       .github-icon-link {
-        color: var(--text-muted);
-        display: flex;
+        color: var(--text);
+        display: inline-flex;
         align-items: center;
-        transition: color 0.2s ease;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.55rem 0.8rem;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.42);
+        text-decoration: none;
+        transition:
+          background-color 0.2s ease,
+          border-color 0.2s ease,
+          color 0.2s ease;
       }
 
       .github-icon-link:hover {
-        color: var(--text);
+        border-color: var(--channel-accent-border);
+        background: var(--channel-accent-soft);
       }
 
       .github-icon-link svg {
-        width: 20px;
-        height: 20px;
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+
+      .github-button-main {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+      }
+
+      .github-mark-wrap {
+        width: 1.8rem;
+        height: 1.8rem;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text);
+        flex-shrink: 0;
+      }
+
+      .github-link-copy {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        line-height: 1.15;
+      }
+
+      .github-link-kicker {
+        display: none;
+      }
+
+      .github-link-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+
+      .github-link-subtitle {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+      }
+
+      .github-link-meta {
+        font-size: 0.72rem;
+        font-weight: 500;
+        margin-top: 0.22rem;
+        color: var(--text-subtle);
+      }
+
+      .github-link-meta.muted {
+        color: var(--text-muted);
+      }
+
+      .github-link-arrow {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-subtle);
+        flex-shrink: 0;
+      }
+
+      .github-link-arrow svg {
+        width: 13px;
+        height: 13px;
       }
 
       .mac-arch-toggle {
@@ -420,7 +458,7 @@
       .channel-toggle {
         display: flex;
         justify-content: center;
-        margin-bottom: 2rem;
+        margin-bottom: 0;
         gap: 0;
       }
 
@@ -516,17 +554,16 @@
       }
 
       @media (max-width: 640px) {
+        :root {
+          --selection-gap: 1.5rem;
+        }
+
         body {
           padding-top: 1.5rem;
         }
 
         .connector-path {
           stroke-width: 1.5;
-        }
-
-        .channel-toggle,
-        .platform-toggle {
-          margin-bottom: 1.5rem;
         }
 
         .container {
@@ -543,7 +580,11 @@
           margin-bottom: 1rem;
         }
 
-        .platform-btn,
+        .github-icon-link {
+          width: 100%;
+          padding: 0.55rem 0.75rem;
+        }
+
         .arch-btn,
         .channel-btn {
           padding: 0.4rem 0.6rem;
@@ -572,7 +613,6 @@
           margin-right: 0.5rem;
         }
 
-        .version-display,
         .meta-note {
           font-size: 0.7rem;
         }
@@ -596,7 +636,11 @@
           height: 64px;
         }
 
-        .platform-btn,
+        .github-mark-wrap {
+          width: 1.65rem;
+          height: 1.65rem;
+        }
+
         .arch-btn,
         .channel-btn {
           padding: 0.35rem 0.6rem;
@@ -624,10 +668,14 @@
       <img src="./icon.png" alt="Docktor" class="icon" id="app-icon" />
       <h1 id="app-title">Docktor</h1>
       <p class="intro-copy" style="margin-top: 1rem; margin-bottom: 0.75rem">
-        Customize Dock icon click, double-click, and scroll actions, including
-        App Exposé (show all windows for that app), Bring All to Front, Hide
-        App, Hide Others, Minimize All, Quit App, Activate App, and Single App
-        Mode.
+        Docktor is a free open source macOS app to customize Dock icon click,
+        double-click, and scroll actions.
+      </p>
+
+      <p class="intro-copy" style="margin-top: 0; margin-bottom: 0.75rem">
+        Actions include: App Exposé (show all windows for that app), Bring All
+        to Front, Hide App, Hide Others, Minimize All, Quit App, Activate App,
+        and Single App Mode.
       </p>
 
       <p class="intro-copy" id="meta-note" style="margin-top: 0; margin-bottom: 2rem">
@@ -635,32 +683,12 @@
         clicking a Dock icon shows all open windows for that app.
       </p>
 
-      <div style="display: flex; justify-content: center; margin-bottom: 1rem">
-        <a
-          href="https://github.com/apotenza92/docktor"
-          class="github-icon-link"
-          title="View on GitHub"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path
-              d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
-            />
-          </svg>
-        </a>
-      </div>
-
       <div class="selection-flow" id="selection-flow">
         <svg class="connector-svg" id="connector-svg"></svg>
-
-        <div class="version-display" id="version-display"></div>
 
         <div class="channel-toggle" id="channel-toggle">
           <button class="channel-btn active" id="channel-stable">Stable</button>
           <button class="channel-btn" id="channel-beta">Beta</button>
-        </div>
-
-        <div class="platform-toggle" id="platform-toggle">
-          <button class="platform-btn active" id="platform-btn-mac">macOS</button>
         </div>
 
         <div class="download-wrapper" id="download-wrapper">
@@ -719,6 +747,36 @@ brew install --cask apotenza92/tap/docktor</code
         Beta installs side by side and may contain bugs or incomplete changes.
       </div>
 
+      <div class="github-button-row">
+        <a
+          href="https://github.com/apotenza92/docktor"
+          class="github-icon-link"
+          title="View on GitHub"
+        >
+          <span class="github-button-main">
+            <span class="github-mark-wrap" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
+                />
+              </svg>
+            </span>
+            <span class="github-link-copy">
+              <span class="github-link-kicker">Project</span>
+              <span class="github-link-title">GitHub</span>
+              <span class="github-link-subtitle">Free and Open Source</span>
+              <span class="github-link-meta muted" id="github-release-meta">Loading latest release…</span>
+            </span>
+          </span>
+          <span class="github-link-arrow" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 17 17 7"></path>
+              <path d="M9 7h8v8"></path>
+            </svg>
+          </span>
+        </a>
+      </div>
+
       <p
         style="
           font-size: 0.95rem;
@@ -771,28 +829,21 @@ brew install --cask apotenza92/tap/docktor</code
         svg.innerHTML = "";
 
         const activeChannel = document.querySelector(".channel-btn.active");
-        const activePlatform = document.querySelector(".platform-btn.active");
         const activeArch = document.querySelector(".mac-arch-toggle .arch-btn.active");
         const downloadBtn = document.getElementById("download-btn");
         const homebrewBox = document.getElementById("mac-homebrew-box");
 
-        if (!activeChannel || !activePlatform || !activeArch || !downloadBtn) {
+        if (!activeChannel || !activeArch || !downloadBtn) {
           return;
         }
 
         const channelRect = activeChannel.getBoundingClientRect();
-        const platformRect = activePlatform.getBoundingClientRect();
         const archRect = activeArch.getBoundingClientRect();
         const dlRect = downloadBtn.getBoundingClientRect();
 
         const channelCenterX =
           channelRect.left + channelRect.width / 2 - flowRect.left;
         const channelBottomY = channelRect.bottom - flowRect.top;
-
-        const platformCenterX =
-          platformRect.left + platformRect.width / 2 - flowRect.left;
-        const platformTopY = platformRect.top - flowRect.top;
-        const platformBottomY = platformRect.bottom - flowRect.top;
 
         const archCenterX = archRect.left + archRect.width / 2 - flowRect.left;
         const archTopY = archRect.top - flowRect.top;
@@ -802,27 +853,16 @@ brew install --cask apotenza92/tap/docktor</code
         const dlTopY = dlRect.top - flowRect.top;
         const dlBottomY = dlRect.bottom - flowRect.top;
 
-        const pathChannel = document.createElementNS(
+        const pathChannelToArch = document.createElementNS(
           "http://www.w3.org/2000/svg",
           "path",
         );
-        pathChannel.setAttribute(
+        pathChannelToArch.setAttribute(
           "d",
-          createCurvedPath(channelCenterX, channelBottomY, platformCenterX, platformTopY),
+          createCurvedPath(channelCenterX, channelBottomY, archCenterX, archTopY),
         );
-        pathChannel.setAttribute("class", "connector-path");
-        svg.appendChild(pathChannel);
-
-        const pathPlatform = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "path",
-        );
-        pathPlatform.setAttribute(
-          "d",
-          createCurvedPath(platformCenterX, platformBottomY, archCenterX, archTopY),
-        );
-        pathPlatform.setAttribute("class", "connector-path");
-        svg.appendChild(pathPlatform);
+        pathChannelToArch.setAttribute("class", "connector-path");
+        svg.appendChild(pathChannelToArch);
 
         const pathDownload = document.createElementNS(
           "http://www.w3.org/2000/svg",
@@ -1075,10 +1115,10 @@ brew install --cask apotenza92/tap/docktor</code
         }).format(new Date(value));
       }
 
-      function updateVersionDisplay(text, channelClass) {
-        const display = document.getElementById("version-display");
-        display.textContent = text;
-        display.className = `version-display visible ${channelClass}`;
+      function updateGitHubReleaseMeta(text, muted = false) {
+        const meta = document.getElementById("github-release-meta");
+        meta.textContent = text;
+        meta.className = muted ? "github-link-meta muted" : "github-link-meta";
       }
 
       function getHomebrewCommand() {
@@ -1195,7 +1235,7 @@ brew install --cask apotenza92/tap/docktor</code
         updateHomebrew();
 
         if (!releaseModel) {
-          updateVersionDisplay("Loading latest release…", currentChannel);
+          updateGitHubReleaseMeta("Loading latest release…", true);
           btnText.textContent =
             currentMacArch === "arm64"
               ? "Download for Apple Silicon"
@@ -1212,7 +1252,7 @@ brew install --cask apotenza92/tap/docktor</code
         const archLabel = currentMacArch === "arm64" ? "Apple Silicon" : "Intel";
         const dateText = release ? `v${version} • ${formatDate(release.publishedAt)}` : "Release unavailable";
 
-        updateVersionDisplay(dateText, currentChannel);
+        updateGitHubReleaseMeta(dateText, !release);
 
         btnText.textContent = asset
           ? `Download for ${archLabel}`
@@ -1289,7 +1329,7 @@ brew install --cask apotenza92/tap/docktor</code
           });
         fetchReleaseInfo().catch((error) => {
           console.error(error);
-          updateVersionDisplay("Latest release on GitHub", currentChannel);
+          updateGitHubReleaseMeta("Latest release on GitHub", true);
           updateConnectors();
         });
 

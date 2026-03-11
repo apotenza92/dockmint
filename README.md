@@ -7,7 +7,9 @@
 </a>
 <br><br>
 
-Customize Dock icon click, double-click, and scroll actions, including App Exposé (show all windows for that app), Bring All to Front, Hide App, Hide Others, Minimize All, Quit App, Activate App, and Single App Mode.
+Docktor is a free open source macOS app to customize Dock icon click, double-click, and scroll actions.
+
+Actions include: App Exposé (show all windows for that app), Bring All to Front, Hide App, Hide Others, Minimize All, Quit App, Activate App, and Single App Mode.
 
 Docktor ships with double click mapped to App Exposé, so double clicking a Dock icon shows all open windows for that app.
 
