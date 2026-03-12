@@ -5,7 +5,8 @@ Policy:
 - Stable cask tracks latest stable tag (vX.Y.Z).
 - Beta cask tracks whichever is newer between latest stable and latest prerelease.
   This keeps beta-channel users moving forward even when stable surpasses beta.
-- Beta artifacts install side-by-side as Dockmint Beta.app.
+- While a beta prerelease is newer, beta artifacts install side-by-side as Dockmint Beta.app.
+- When stable is newer, the beta cask converges back to the stable Dockmint.app artifact.
 """
 
 from __future__ import annotations
@@ -436,17 +437,35 @@ def main() -> int:
         print("Stable cask unchanged (no stable releases yet)")
 
     beta_version = version_string(beta_track.parsed)
-    beta_arm_asset = find_asset(beta_track, *beta_asset_names(beta_version, "arm64"))
-    beta_intel_asset = find_asset(beta_track, *beta_asset_names(beta_version, "x64"))
+    beta_uses_stable_assets = beta_track.parsed.prerelease is None
+    if beta_uses_stable_assets:
+        beta_arm_asset = find_asset(beta_track, *stable_asset_names(beta_version, "arm64"))
+        beta_intel_asset = find_asset(
+            beta_track, *stable_asset_names(beta_version, "x64")
+        )
+    else:
+        beta_arm_asset = find_asset(beta_track, *beta_asset_names(beta_version, "arm64"))
+        beta_intel_asset = find_asset(beta_track, *beta_asset_names(beta_version, "x64"))
     beta_arm_sha = sha256_for_asset(
         beta_arm_asset, github_token=args.github_token, cache=sha_cache
     )
     beta_intel_sha = sha256_for_asset(
         beta_intel_asset, github_token=args.github_token, cache=sha_cache
     )
-    beta_changed = write_if_changed(
-        casks_dir / "dockmint@beta.rb",
-        render_beta_cask(
+    beta_content = (
+        render_stable_cask(
+            "dockmint@beta",
+            "Dockmint",
+            "Stable convergence channel for Dockmint beta users",
+            args.repo,
+            beta_version,
+            beta_arm_asset.download_url,
+            beta_arm_sha,
+            beta_intel_asset.download_url,
+            beta_intel_sha,
+        )
+        if beta_uses_stable_assets
+        else render_beta_cask(
             "dockmint@beta",
             "Dockmint Beta",
             "Beta channel for Dockmint",
@@ -456,13 +475,25 @@ def main() -> int:
             beta_arm_sha,
             beta_intel_asset.download_url,
             beta_intel_sha,
-        ),
+        )
     )
+    beta_changed = write_if_changed(casks_dir / "dockmint@beta.rb", beta_content)
     legacy_beta_path = casks_dir / "docktor@beta.rb"
     if args.legacy_alias_mode == "keep":
-        write_if_changed(
-            legacy_beta_path,
-            render_beta_cask(
+        legacy_beta_content = (
+            render_stable_cask(
+                "docktor@beta",
+                "Dockmint",
+                "Legacy beta alias converged to Dockmint stable",
+                args.repo,
+                beta_version,
+                beta_arm_asset.download_url,
+                beta_arm_sha,
+                beta_intel_asset.download_url,
+                beta_intel_sha,
+            )
+            if beta_uses_stable_assets
+            else render_beta_cask(
                 "docktor@beta",
                 "Dockmint Beta",
                 "Legacy beta alias for Dockmint",
@@ -472,8 +503,9 @@ def main() -> int:
                 beta_arm_sha,
                 beta_intel_asset.download_url,
                 beta_intel_sha,
-            ),
+            )
         )
+        write_if_changed(legacy_beta_path, legacy_beta_content)
     elif legacy_beta_path.exists():
         legacy_beta_path.unlink()
     print(f"Beta cask -> {beta_version} ({'updated' if beta_changed else 'unchanged'})")

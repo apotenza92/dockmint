@@ -5,19 +5,19 @@
     <description>Dockmint update feed (stable channel)</description>
     <language>en</language>
     <item>
-      <title>Version 0.2.1</title>
-      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.2.1</link>
-      <sparkle:version>200190000</sparkle:version>
-      <sparkle:shortVersionString>0.2.1</sparkle:shortVersionString>
+      <title>Version 0.2.2</title>
+      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.2.2</link>
+      <sparkle:version>200290000</sparkle:version>
+      <sparkle:shortVersionString>0.2.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/apotenza92/dockmint/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <description sparkle:format="plain-text"><![CDATA[- Polished the single-window Settings layout with tighter top-column balancing, clearer section hierarchy, compact permissions rows, and action-table sizing tweaks that remove truncation in common controls.
-- Cleaned up update messaging in Settings by showing the short version only and mapping Sparkle "no update found" and cancelled checks to user-friendly status text.
-- Restricted duplicate-instance termination to Debug builds so release builds no longer interfere with Sparkle relaunch/update flows.]]></description>
-      <pubDate>Thu, 12 Mar 2026 02:03:08 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.2.1/Docktor-v0.2.1-macos-x64.zip"
-                 sparkle:edSignature="RFicCyHeyhtxTlyjyKDr1FBkde9d/lrpG+Ztt7OnQA3uzRbZoFwQhcMszO/gf7u8+u3mc/rI10GyZ9nudjebBA=="
-                 length="4579614"
+      <description sparkle:format="plain-text"><![CDATA[- Published the Dockmint stable transition release so existing `Docktor` installs can update in place to Dockmint branding before the later bundle-identifier cleanup release.
+- Kept stable and beta updater continuity on the legacy `Docktor` Sparkle feed while allowing beta users to converge back onto the newer stable release when no newer beta is available.
+- Updated the download page stable theme colors to match the current Dockmint app icon palette.]]></description>
+      <pubDate>Thu, 12 Mar 2026 06:57:35 +0000</pubDate>
+      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.2.2/Dockmint-v0.2.2-macos-x64.zip"
+                 sparkle:edSignature="/n9ZrhsB+vbya+0xEuuwh0Z+nz88ga66btNJRi3zxP3Jic9VoIPFJgtjE/MySFiWof7oGZnTwxQge1boC0sgDg=="
+                 length="4691020"
                  type="application/octet-stream" />
     </item>
   </channel>

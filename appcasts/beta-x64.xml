@@ -5,19 +5,19 @@
     <description>Dockmint update feed (beta channel)</description>
     <language>en</language>
     <item>
-      <title>Version 0.2.2-beta.2</title>
-      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.2.2-beta.2</link>
-      <sparkle:version>200200002</sparkle:version>
-      <sparkle:shortVersionString>0.2.2-beta.2</sparkle:shortVersionString>
+      <title>Version 0.2.2</title>
+      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.2.2</link>
+      <sparkle:version>200290000</sparkle:version>
+      <sparkle:shortVersionString>0.2.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/apotenza92/dockmint/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <description sparkle:format="plain-text"><![CDATA[- Reissued the Dockmint beta as the planned transition build so existing `Docktor Beta` installs can upgrade in place before the later bundle-identifier cleanup release.
-- Kept the Dockmint branding and beta release channel while restoring update compatibility for legacy `pzc.Dockter.beta` installs.
-- Corrected the GitHub release configuration to use the original Dockmint Sparkle signing key for future appcast publication.]]></description>
-      <pubDate>Thu, 12 Mar 2026 06:20:06 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.2.2-beta.2/Dockmint-Beta-v0.2.2-beta.2-macos-x64.zip"
-                 sparkle:edSignature="qnq4skmTxFOo692WA3PI+l8ZKCU/5Qx2Dl7eFb1bYscYkYKgGajcJGasiykO55GpJikAnapMJz/h3iudBXAXCg=="
-                 length="2727088"
+      <description sparkle:format="plain-text"><![CDATA[- Published the Dockmint stable transition release so existing `Docktor` installs can update in place to Dockmint branding before the later bundle-identifier cleanup release.
+- Kept stable and beta updater continuity on the legacy `Docktor` Sparkle feed while allowing beta users to converge back onto the newer stable release when no newer beta is available.
+- Updated the download page stable theme colors to match the current Dockmint app icon palette.]]></description>
+      <pubDate>Thu, 12 Mar 2026 06:57:35 +0000</pubDate>
+      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.2.2/Dockmint-v0.2.2-macos-x64.zip"
+                 sparkle:edSignature="/n9ZrhsB+vbya+0xEuuwh0Z+nz88ga66btNJRi3zxP3Jic9VoIPFJgtjE/MySFiWof7oGZnTwxQge1boC0sgDg=="
+                 length="4691020"
                  type="application/octet-stream" />
     </item>
   </channel>

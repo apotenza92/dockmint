@@ -4,6 +4,7 @@
 Policy:
 - Stable feed tracks latest stable tag (vX.Y.Z)
 - Beta feed tracks whichever is newer between latest stable and latest prerelease
+- When stable wins, the beta feed converges back to the stable app artifact
 - Release notes are sourced from CHANGELOG.md headings (## [vX.Y.Z...])
 """
 
@@ -441,14 +442,25 @@ def main() -> int:
 
     stable_arm_asset = find_asset(stable, *stable_asset_names(stable_version, "arm64"))
     stable_x64_asset = find_asset(stable, *stable_asset_names(stable_version, "x64"))
-    beta_arm_asset = find_asset(
-        beta_track,
-        *beta_asset_names(beta_version, "arm64"),
-    )
-    beta_x64_asset = find_asset(
-        beta_track,
-        *beta_asset_names(beta_version, "x64"),
-    )
+    beta_uses_stable_assets = beta_track.parsed.prerelease is None
+    if beta_uses_stable_assets:
+        beta_arm_asset = find_asset(
+            beta_track,
+            *stable_asset_names(beta_version, "arm64"),
+        )
+        beta_x64_asset = find_asset(
+            beta_track,
+            *stable_asset_names(beta_version, "x64"),
+        )
+    else:
+        beta_arm_asset = find_asset(
+            beta_track,
+            *beta_asset_names(beta_version, "arm64"),
+        )
+        beta_x64_asset = find_asset(
+            beta_track,
+            *beta_asset_names(beta_version, "x64"),
+        )
 
     stable_notes = extract_notes(args.changelog, stable.tag_name)
     beta_notes = extract_notes(args.changelog, beta_track.tag_name)
