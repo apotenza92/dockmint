@@ -3,6 +3,7 @@ logs/*
 **/*.xcuserdatad/
 **/xcuserdata/
 tools/artifacts/
+artifacts/
 .build/
 .derivedData/
 dist/
