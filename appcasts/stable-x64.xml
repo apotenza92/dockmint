@@ -15,7 +15,7 @@
 - Cleaned up update messaging in Settings by showing the short version only and mapping Sparkle "no update found" and cancelled checks to user-friendly status text.
 - Restricted duplicate-instance termination to Debug builds so release builds no longer interfere with Sparkle relaunch/update flows.]]></description>
       <pubDate>Thu, 12 Mar 2026 02:03:08 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.2.1/Dockmint-v0.2.1-macos-x64.zip"
+      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.2.1/Docktor-v0.2.1-macos-x64.zip"
                  sparkle:edSignature="RFicCyHeyhtxTlyjyKDr1FBkde9d/lrpG+Ztt7OnQA3uzRbZoFwQhcMszO/gf7u8+u3mc/rI10GyZ9nudjebBA=="
                  length="4579614"
                  type="application/octet-stream" />

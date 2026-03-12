@@ -5,19 +5,19 @@
     <description>Dockmint update feed (beta channel)</description>
     <language>en</language>
     <item>
-      <title>Version 0.2.1</title>
-      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.2.1</link>
-      <sparkle:version>200190000</sparkle:version>
-      <sparkle:shortVersionString>0.2.1</sparkle:shortVersionString>
+      <title>Version 0.2.2-beta.1</title>
+      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.2.2-beta.1</link>
+      <sparkle:version>200200001</sparkle:version>
+      <sparkle:shortVersionString>0.2.2-beta.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/apotenza92/dockmint/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <description sparkle:format="plain-text"><![CDATA[- Polished the single-window Settings layout with tighter top-column balancing, clearer section hierarchy, compact permissions rows, and action-table sizing tweaks that remove truncation in common controls.
-- Cleaned up update messaging in Settings by showing the short version only and mapping Sparkle "no update found" and cancelled checks to user-friendly status text.
-- Restricted duplicate-instance termination to Debug builds so release builds no longer interfere with Sparkle relaunch/update flows.]]></description>
-      <pubDate>Thu, 12 Mar 2026 02:03:08 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.2.1/Dockmint-Beta-v0.2.1-macos-x64.zip"
-                 sparkle:edSignature="/JC1K8xpME+6xThr2326AIjU8qnJwwKjslbbxWJl/A8+HhL43tt0waMUzSENxSn1QXHmqzVzqtfTrTFjqc4fBA=="
-                 length="2803086"
+      <description sparkle:format="plain-text"><![CDATA[- Restored Dockmint beta release continuity after the repository rename by publishing the beta channel from the live `apotenza92/dockmint` repo and aligning release metadata with Dockmint bundle/update paths.
+- Fixed updater continuity for Dockmint installs so beta appcasts and release downloads resolve under the Dockmint repo instead of dead pre-rename URLs.
+- Simplified the app icon and menu bar icon back to the plain Lucide leaf geometry to remove the flipped/skewed leaf rendering.]]></description>
+      <pubDate>Thu, 12 Mar 2026 05:55:28 +0000</pubDate>
+      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.2.2-beta.1/Dockmint-Beta-v0.2.2-beta.1-macos-x64.zip"
+                 sparkle:edSignature="f9K9W7TuniTSNEx3+yte1ynGrUN2PzDfDM7uB+OnTydV7Ji4gHi9X/PMCZ/tjfDTC20Eqgw0kA+OuhnmupHjBA=="
+                 length="2728696"
                  type="application/octet-stream" />
     </item>
   </channel>
