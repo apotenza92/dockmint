@@ -19,6 +19,7 @@
 APP_BIN="${APP_BIN:-}"
 APP_BUNDLE="${APP_BUNDLE:-}"
 CLICLICK_BIN="${CLICLICK_BIN:-}"
+APP_EXECUTABLE_PATH="${APP_EXECUTABLE_PATH:-}"
 
 APP_PID=""
 TEST_ORIG_AUTOHIDE=""
@@ -73,7 +74,26 @@ require_tool() {
 discover_latest_debug_app_bundle() {
   local derived_data_root="$HOME/Library/Developer/Xcode/DerivedData"
   local repo_debug_bundle="$PWD/.build/Build/Products/Debug/Docktor.app"
+  local repo_debug_executable_path="Contents/MacOS/Docktor"
   local -a candidates=()
+  local xcode_settings=""
+  local xcode_built_products_dir=""
+  local xcode_full_product_name=""
+  local xcode_executable_path=""
+
+  xcode_settings="$(xcodebuild -project Docktor.xcodeproj -scheme Docktor -configuration Debug -showBuildSettings 2>/dev/null || true)"
+  if [[ -n "$xcode_settings" ]]; then
+    xcode_built_products_dir="$(printf '%s\n' "$xcode_settings" | awk -F' = ' '/^[[:space:]]*BUILT_PRODUCTS_DIR = / { print $2; exit }')"
+    xcode_full_product_name="$(printf '%s\n' "$xcode_settings" | awk -F' = ' '/^[[:space:]]*FULL_PRODUCT_NAME = / { print $2; exit }')"
+    xcode_executable_path="$(printf '%s\n' "$xcode_settings" | awk -F' = ' '/^[[:space:]]*EXECUTABLE_PATH = / { print $2; exit }')"
+  fi
+
+  if [[ -n "$xcode_built_products_dir" && -n "$xcode_full_product_name" ]]; then
+    candidates+=("$xcode_built_products_dir/$xcode_full_product_name")
+    if [[ -n "$xcode_executable_path" ]]; then
+      APP_EXECUTABLE_PATH="${xcode_executable_path#"$xcode_full_product_name"/}"
+    fi
+  fi
 
   if [[ -d "$repo_debug_bundle" ]]; then
     candidates+=("$repo_debug_bundle")
@@ -89,7 +109,7 @@ discover_latest_debug_app_bundle() {
   local latest_mtime=-1
   local candidate
   for candidate in "${candidates[@]}"; do
-    local bin="$candidate/Contents/MacOS/Docktor"
+    local bin="$candidate/${APP_EXECUTABLE_PATH:-$repo_debug_executable_path}"
     [[ -x "$bin" ]] || continue
 
     local mtime
@@ -122,7 +142,7 @@ resolve_app_paths() {
       return 1
     fi
     APP_BUNDLE="$(cd "$APP_BUNDLE" && pwd -P)"
-    APP_BIN="$APP_BUNDLE/Contents/MacOS/Docktor"
+    APP_BIN="$APP_BUNDLE/${APP_EXECUTABLE_PATH:-Contents/MacOS/Docktor}"
   else
     local discovered_bundle
     discovered_bundle="$(discover_latest_debug_app_bundle || true)"
@@ -131,7 +151,7 @@ resolve_app_paths() {
       return 1
     fi
     APP_BUNDLE="$discovered_bundle"
-    APP_BIN="$APP_BUNDLE/Contents/MacOS/Docktor"
+    APP_BIN="$APP_BUNDLE/${APP_EXECUTABLE_PATH:-Contents/MacOS/Docktor}"
   fi
 
   if [[ ! -x "$APP_BIN" ]]; then

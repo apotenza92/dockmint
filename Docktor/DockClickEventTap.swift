@@ -296,16 +296,23 @@ final class DockClickEventTap {
         let isContinuous = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
 
         let nsEvent = NSEvent(cgEvent: event)
-        let appKitDelta = nsEvent?.scrollingDeltaY ?? 0
-
-        let pointDelta = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1) // pixel-ish for trackpads
-        let fixedDelta = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1) / 256.0 // convert 16.16 fixed to float
-        let coarseDelta = event.getDoubleValueField(.scrollWheelEventDeltaAxis1) // wheel notch count
-        let delta = DockDecisionEngine.resolvedScrollDelta(pointDelta: pointDelta,
-                                                           fixedDelta: fixedDelta,
-                                                           coarseDelta: coarseDelta,
-                                                           appKitDelta: appKitDelta,
-                                                           isContinuous: isContinuous)
+        let primaryAxis = DecisionScrollAxisDelta(
+            pointDelta: event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1),
+            fixedDelta: event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1) / 256.0,
+            coarseDelta: event.getDoubleValueField(.scrollWheelEventDeltaAxis1),
+            appKitDelta: Double(nsEvent?.scrollingDeltaY ?? 0)
+        )
+        let alternateAxis = DecisionScrollAxisDelta(
+            pointDelta: event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2),
+            fixedDelta: event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2) / 256.0,
+            coarseDelta: event.getDoubleValueField(.scrollWheelEventDeltaAxis2),
+            appKitDelta: Double(nsEvent?.scrollingDeltaX ?? 0)
+        )
+        let prefersAlternateAxis = flags.contains(.maskShift)
+        let delta = DockDecisionEngine.resolvedScrollDelta(primaryAxis: primaryAxis,
+                                                           alternateAxis: alternateAxis,
+                                                           isContinuous: isContinuous,
+                                                           prefersAlternateAxis: prefersAlternateAxis)
         let sourceBundleIdentifier = sourceBundleIdentifier(for: event)
         let nowUptime = ProcessInfo.processInfo.systemUptime
         let userOverrideInvertDiscrete = UserDefaults.standard.bool(forKey: Self.invertDiscreteScrollDirectionKey)
@@ -361,7 +368,7 @@ final class DockClickEventTap {
         let resolvedDirection = DockDecisionEngine.resolvedScrollDirection(delta: effectiveDelta)
         let direction: ScrollDirection = resolvedDirection == .up ? .up : .down
 
-        Logger.debug("DockClickEventTap: Raw scroll at \(location.x), \(location.y) (appKit: \(appKitDelta), point: \(pointDelta), fixed: \(fixedDelta), coarse: \(coarseDelta), sourceBundle: \(sourceBundleIdentifier ?? "nil"), remapperRunning: \(cachedKnownRemapperRunning), inverted: \(nsEvent?.isDirectionInvertedFromDevice ?? false), flipDiscrete: \(invertDiscreteDirection), rawDelta: \(delta), effectiveDelta: \(effectiveDelta), dir: \(direction == .up ? "up" : "down"), continuous: \(isContinuous))")
+        Logger.debug("DockClickEventTap: Raw scroll at \(location.x), \(location.y) (yAppKit: \(primaryAxis.appKitDelta), yPoint: \(primaryAxis.pointDelta), yFixed: \(primaryAxis.fixedDelta), yCoarse: \(primaryAxis.coarseDelta), xAppKit: \(alternateAxis.appKitDelta), xPoint: \(alternateAxis.pointDelta), xFixed: \(alternateAxis.fixedDelta), xCoarse: \(alternateAxis.coarseDelta), prefersAlternateAxis: \(prefersAlternateAxis), sourceBundle: \(sourceBundleIdentifier ?? "nil"), remapperRunning: \(cachedKnownRemapperRunning), inverted: \(nsEvent?.isDirectionInvertedFromDevice ?? false), flipDiscrete: \(invertDiscreteDirection), rawDelta: \(delta), effectiveDelta: \(effectiveDelta), dir: \(direction == .up ? "up" : "down"), continuous: \(isContinuous))")
         let shouldConsume = scrollHandler?(location, direction, flags) ?? false
         Logger.debug("DockClickEventTap: Scroll consume=\(shouldConsume)")
 

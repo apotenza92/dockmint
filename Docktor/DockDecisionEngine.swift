@@ -1,5 +1,12 @@
 import Foundation
 
+struct DecisionScrollAxisDelta {
+    let pointDelta: Double
+    let fixedDelta: Double
+    let coarseDelta: Double
+    let appKitDelta: Double
+}
+
 enum DecisionFirstClickBehavior {
     case activateApp
     case bringAllToFront
@@ -128,25 +135,48 @@ enum DockDecisionEngine {
         }
     }
 
-    static func resolvedScrollDelta(pointDelta: Double,
-                                    fixedDelta: Double,
-                                    coarseDelta: Double,
-                                    appKitDelta: Double,
-                                    isContinuous: Bool) -> Double {
+    static func resolvedScrollDelta(primaryAxis: DecisionScrollAxisDelta,
+                                    alternateAxis: DecisionScrollAxisDelta? = nil,
+                                    isContinuous: Bool,
+                                    prefersAlternateAxis: Bool = false) -> Double {
+        let primaryDelta = resolvedScrollDelta(axis: primaryAxis, isContinuous: isContinuous)
+
+        guard let alternateAxis else {
+            return primaryDelta
+        }
+
+        let alternateDelta = resolvedScrollDelta(axis: alternateAxis, isContinuous: isContinuous)
+        guard prefersAlternateAxis else {
+            return primaryDelta
+        }
+
+        if abs(alternateDelta) > abs(primaryDelta) {
+            return alternateDelta
+        }
+
+        if primaryDelta == 0 {
+            return alternateDelta
+        }
+
+        return primaryDelta
+    }
+
+    private static func resolvedScrollDelta(axis: DecisionScrollAxisDelta,
+                                            isContinuous: Bool) -> Double {
         // Prefer AppKit's interpreted delta when available. It represents how regular macOS
         // apps see the scroll event after system/device policy and upstream transforms.
-        if appKitDelta != 0 {
-            return appKitDelta
+        if axis.appKitDelta != 0 {
+            return axis.appKitDelta
         }
 
         if isContinuous {
             // Trackpad/magic mouse: point deltas are the most expressive signal.
-            return [pointDelta, fixedDelta, coarseDelta].first(where: { $0 != 0 }) ?? 0
+            return [axis.pointDelta, axis.fixedDelta, axis.coarseDelta].first(where: { $0 != 0 }) ?? 0
         }
 
         // Discrete wheel devices can have remappers that rewrite only a subset of fields.
         // If at least two fields agree on sign, follow that majority sign.
-        let fields = [pointDelta, fixedDelta, coarseDelta].filter { $0 != 0 }
+        let fields = [axis.pointDelta, axis.fixedDelta, axis.coarseDelta].filter { $0 != 0 }
         let positiveCount = fields.filter { $0 > 0 }.count
         let negativeCount = fields.filter { $0 < 0 }.count
 
@@ -159,7 +189,7 @@ enum DockDecisionEngine {
         }
 
         // Tie/unknown fallback: fixed-point, then coarse notch, then point.
-        return [fixedDelta, coarseDelta, pointDelta].first(where: { $0 != 0 }) ?? 0
+        return [axis.fixedDelta, axis.coarseDelta, axis.pointDelta].first(where: { $0 != 0 }) ?? 0
     }
 
     private static let knownRemapperHints: [String] = [

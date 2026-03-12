@@ -8,8 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		3753B064E9EE87BADBB34AAC /* Docktor.app in Frameworks */ = {isa = PBXBuildFile; fileRef = FA12B1922EFF98EC00DB8333 /* Docktor.app */; };
-		C374E4A29F47ED49B09150A8 /* DockDecisionEngineXCTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93451BA79642D3FDADF60039 /* DockDecisionEngineXCTest.swift */; };
-		D1E2F3A4B5C60718293A4B5C /* DockDecisionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6978877665544 /* DockDecisionEngine.swift */; };
+		C374E4A29F47ED49B09150A8 /* DocktorTests/DockDecisionEngineXCTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93451BA79642D3FDADF60039 /* DocktorTests/DockDecisionEngineXCTest.swift */; };
+		D1E2F3A4B5C60718293A4B5C /* Docktor/DockDecisionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6978877665544 /* Docktor/DockDecisionEngine.swift */; };
+		D7A1C2234F1B4D4A91C4A001 /* Docktor/DockHitTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7A1C2234F1B4D4A91C4A002 /* Docktor/DockHitTest.swift */; };
+		D7A1C2234F1B4D4A91C4A003 /* Docktor/Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7A1C2234F1B4D4A91C4A004 /* Docktor/Logger.swift */; };
 		EDD76B1AD00EEC6FF14F9306 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1C3D7B1DBCB2A02A51BAF57 /* Cocoa.framework */; };
 		FA12B1D52F00111100DB8333 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = FA12B1D72F00111100DB8333 /* Sparkle */; };
 /* End PBXBuildFile section */
@@ -26,9 +28,11 @@
 
 /* Begin PBXFileReference section */
 		1D80AE08BC0FDB992139A0CF /* DocktorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DocktorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		93451BA79642D3FDADF60039 /* DockDecisionEngineXCTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DocktorTests/DockDecisionEngineXCTest.swift; sourceTree = "<group>"; };
-		F1E2D3C4B5A6978877665544 /* DockDecisionEngine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Docktor/DockDecisionEngine.swift; sourceTree = "<group>"; };
+		93451BA79642D3FDADF60039 /* DocktorTests/DockDecisionEngineXCTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DocktorTests/DockDecisionEngineXCTest.swift; sourceTree = "<group>"; };
+		D7A1C2234F1B4D4A91C4A002 /* Docktor/DockHitTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Docktor/DockHitTest.swift; sourceTree = "<group>"; };
+		D7A1C2234F1B4D4A91C4A004 /* Docktor/Logger.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Docktor/Logger.swift; sourceTree = "<group>"; };
 		E1C3D7B1DBCB2A02A51BAF57 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		F1E2D3C4B5A6978877665544 /* Docktor/DockDecisionEngine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Docktor/DockDecisionEngine.swift; sourceTree = "<group>"; };
 		FA12B1922EFF98EC00DB8333 /* Docktor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Docktor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -77,8 +81,10 @@
 		408FA64AE679444C7627B0C1 /* DocktorTests */ = {
 			isa = PBXGroup;
 			children = (
-				93451BA79642D3FDADF60039 /* DockDecisionEngineXCTest.swift */,
-				F1E2D3C4B5A6978877665544 /* DockDecisionEngine.swift */,
+				93451BA79642D3FDADF60039 /* DocktorTests/DockDecisionEngineXCTest.swift */,
+				D7A1C2234F1B4D4A91C4A002 /* Docktor/DockHitTest.swift */,
+				D7A1C2234F1B4D4A91C4A004 /* Docktor/Logger.swift */,
+				F1E2D3C4B5A6978877665544 /* Docktor/DockDecisionEngine.swift */,
 			);
 			name = DocktorTests;
 			sourceTree = "<group>";
@@ -222,8 +228,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C374E4A29F47ED49B09150A8 /* DockDecisionEngineXCTest.swift in Sources */,
-				D1E2F3A4B5C60718293A4B5C /* DockDecisionEngine.swift in Sources */,
+				C374E4A29F47ED49B09150A8 /* DocktorTests/DockDecisionEngineXCTest.swift in Sources */,
+				D7A1C2234F1B4D4A91C4A001 /* Docktor/DockHitTest.swift in Sources */,
+				D7A1C2234F1B4D4A91C4A003 /* Docktor/Logger.swift in Sources */,
+				D1E2F3A4B5C60718293A4B5C /* Docktor/DockDecisionEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -416,17 +424,17 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = pzc.Dockter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SU_FEED_URL = "https://raw.githubusercontent.com/apotenza92/docktor/main/appcasts/stable-arm64.xml";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				SU_FEED_URL = https://raw.githubusercontent.com/apotenza92/docktor/main/appcasts/stable-arm64.xml;
 			};
 			name = Debug;
 		};
@@ -451,17 +459,17 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.2;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = pzc.Dockter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SU_FEED_URL = "https://raw.githubusercontent.com/apotenza92/docktor/main/appcasts/stable-arm64.xml";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				SU_FEED_URL = https://raw.githubusercontent.com/apotenza92/docktor/main/appcasts/stable-arm64.xml;
 			};
 			name = Release;
 		};

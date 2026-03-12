@@ -7,11 +7,14 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     static let shared = UpdateManager(preferences: Preferences.shared)
 
     @Published private(set) var canCheckForUpdates = false
+    @Published private(set) var currentVersionText = UpdateManager.makeCurrentVersionText()
+    @Published private(set) var updateStatusText = "Update status unavailable."
 
     private let preferences: Preferences
     private var updateCheckTimer: Timer?
     private var cancellables: Set<AnyCancellable> = []
     private var didConfigure = false
+    private var isCheckingForUpdates = false
 
     private lazy var updaterController = SPUStandardUpdaterController(
         startingUpdater: false,
@@ -30,18 +33,21 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
 
         guard !isAutomatedMode else {
             Logger.log("UpdateManager disabled in automated test mode")
+            updateStatusText = "Update checks disabled in automated test mode."
             return
         }
 
         guard !Self.isDevelopmentBuild else {
             Logger.log("UpdateManager disabled in development build")
             canCheckForUpdates = false
+            updateStatusText = "Update checks disabled in development builds."
             return
         }
 
         updaterController.startUpdater()
         bindUpdaterState()
         bindPreferences()
+        updateStatusText = "Ready to check for updates."
         performLaunchUpdateCheckIfNeeded()
         rescheduleAutomaticChecks()
     }
@@ -50,6 +56,7 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         guard didConfigure else { return }
         guard updaterController.updater.canCheckForUpdates else { return }
         preferences.markUpdateCheckNow()
+        beginUpdateCheck(statusText: "Checking for updates...")
         updaterController.checkForUpdates(nil)
     }
 
@@ -94,7 +101,17 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     private func performBackgroundUpdateCheck() {
         guard updaterController.updater.canCheckForUpdates else { return }
         preferences.markUpdateCheckNow()
+        beginUpdateCheck(statusText: "Checking for updates...")
         updaterController.updater.checkForUpdatesInBackground()
+    }
+
+    private func beginUpdateCheck(statusText: String) {
+        isCheckingForUpdates = true
+        updateStatusText = statusText
+    }
+
+    private func finishUpdateCheckIfNeeded() {
+        isCheckingForUpdates = false
     }
 
     nonisolated func feedURLString(for updater: SPUUpdater) -> String? {
@@ -122,5 +139,59 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         #else
         return false
         #endif
+    }
+
+    private static func makeCurrentVersionText() -> String {
+        let bundle = Bundle.main
+        let shortVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let buildVersion = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+
+        switch (shortVersion, buildVersion) {
+        case let (.some(shortVersion), .some(buildVersion)) where !shortVersion.isEmpty && !buildVersion.isEmpty:
+            return "Version \(shortVersion) (\(buildVersion))"
+        case let (.some(shortVersion), _ ) where !shortVersion.isEmpty:
+            return "Version \(shortVersion)"
+        case let (_, .some(buildVersion)) where !buildVersion.isEmpty:
+            return "Build \(buildVersion)"
+        default:
+            return "Version unavailable"
+        }
+    }
+
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        finishUpdateCheckIfNeeded()
+        updateStatusText = "Update available: \(item.displayVersionString)"
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        finishUpdateCheckIfNeeded()
+        updateStatusText = "You're up to date."
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
+        finishUpdateCheckIfNeeded()
+        updateStatusText = "You're up to date."
+    }
+
+    func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
+        finishUpdateCheckIfNeeded()
+        updateStatusText = "Installing update \(item.displayVersionString)..."
+    }
+
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        finishUpdateCheckIfNeeded()
+        updateStatusText = "Update check failed: \(error.localizedDescription)"
+    }
+
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
+        if let error {
+            finishUpdateCheckIfNeeded()
+            updateStatusText = "Update check failed: \(error.localizedDescription)"
+            return
+        }
+
+        guard isCheckingForUpdates else { return }
+        finishUpdateCheckIfNeeded()
+        updateStatusText = "Update check finished."
     }
 }

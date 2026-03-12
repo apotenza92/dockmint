@@ -2,36 +2,51 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
+    private static let animationsDisabled: Bool = {
+        let value = ProcessInfo.processInfo.environment["DOCKTOR_DISABLE_SETTINGS_ANIMATION"]?.lowercased()
+        return value == "1" || value == "true" || value == "yes"
+    }()
     private let defaults = UserDefaults.standard
     private let frameDefaultsKey = "settingsWindowFrame"
     private let primaryInitialFocusControlTitle = "Show menu bar icon"
     private let fallbackInitialFocusControlTitle = "Check for Updates"
+    private let folderOpenWithOptionsStore: FolderOpenWithOptionsStore
+    private let viewModel: SettingsWindowViewModel
+    private let hostingController: NSHostingController<PreferencesView>
     private var frameObservers: [NSObjectProtocol] = []
+    private var pendingOpenSession: SettingsPerformance.Session?
+    private var pendingPaneSession: SettingsPerformance.Session?
+    private var pendingPaneReady: SettingsPane?
 
     init(services: AppServices) {
-        let view = PreferencesView(
-            coordinator: services.coordinator,
-            updateManager: services.updateManager,
-            preferences: services.preferences
-        )
+        self.folderOpenWithOptionsStore = services.folderOpenWithOptionsStore
+        let viewModel = SettingsWindowViewModel()
+        self.viewModel = viewModel
+        let view = Self.makePreferencesView(services: services, viewModel: viewModel, onPaneAppear: { _ in })
         let hostingController = NSHostingController(rootView: view)
+        self.hostingController = hostingController
         let window = NSWindow(contentViewController: hostingController)
 
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.title = AppServices.settingsWindowTitle
         window.isReleasedWhenClosed = false
         window.level = .normal
-
-        hostingController.view.layoutSubtreeIfNeeded()
-        let fittingSize = hostingController.view.fittingSize
-        if fittingSize.width > 0, fittingSize.height > 0 {
-            window.setContentSize(fittingSize)
-            window.minSize = fittingSize
-        }
+        window.toolbarStyle = .preference
+        window.setFrame(NSRect(origin: .zero, size: viewModel.selectedPane.windowFrameSize), display: false)
 
         super.init(window: window)
 
+        hostingController.rootView = Self.makePreferencesView(
+            services: services,
+            viewModel: viewModel,
+            onPaneAppear: { [weak self] pane in
+                self?.paneDidAppear(pane)
+            }
+        )
+
+        folderOpenWithOptionsStore.warmIfNeeded()
+        applyWindowSizing(for: viewModel.selectedPane, animated: false)
         if !restoreFrame(for: window) {
             center(window: window)
         }
@@ -43,8 +58,15 @@ final class SettingsWindowController: NSWindowController {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func show() {
+    func show(openSession: SettingsPerformance.Session? = nil) {
         guard let window else { return }
+        pendingOpenSession = openSession
+        pendingPaneReady = viewModel.selectedPane
+
+        if window.isVisible {
+            pendingOpenSession?.complete(extraMetadata: ["pane": viewModel.selectedPane.rawValue])
+            pendingOpenSession = nil
+        }
         if window.isMiniaturized {
             window.deminiaturize(nil)
         }
@@ -52,6 +74,7 @@ final class SettingsWindowController: NSWindowController {
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.async { [weak self] in
             self?.applyInitialKeyboardSelection()
+            self?.paneDidAppear(self?.viewModel.selectedPane ?? .general)
         }
     }
 
@@ -87,6 +110,48 @@ final class SettingsWindowController: NSWindowController {
         )
     }
 
+    private func paneDidAppear(_ pane: SettingsPane) {
+        guard pane == pendingPaneReady else { return }
+
+        pendingPaneReady = nil
+        pendingPaneSession?.complete(extraMetadata: ["pane": pane.rawValue])
+        pendingPaneSession = nil
+        pendingOpenSession?.complete(extraMetadata: ["pane": pane.rawValue])
+        pendingOpenSession = nil
+    }
+
+    private static func makePreferencesView(
+        services: AppServices,
+        viewModel: SettingsWindowViewModel,
+        onPaneAppear: @escaping (SettingsPane) -> Void
+    ) -> PreferencesView {
+        PreferencesView(
+            coordinator: services.coordinator,
+            updateManager: services.updateManager,
+            preferences: services.preferences,
+            folderOpenWithOptionsStore: services.folderOpenWithOptionsStore,
+            viewModel: viewModel,
+            onPaneAppear: onPaneAppear
+        )
+    }
+
+    private func applyWindowSizing(for pane: SettingsPane, animated: Bool) {
+        guard let window else { return }
+
+        let frameSize = pane.windowFrameSize
+        let currentFrame = window.frame
+        let newFrame = NSRect(
+            x: currentFrame.minX,
+            y: currentFrame.maxY - frameSize.height,
+            width: frameSize.width,
+            height: frameSize.height
+        )
+
+        window.minSize = frameSize
+        window.maxSize = frameSize
+        window.setFrame(newFrame, display: true, animate: animated && !Self.animationsDisabled)
+    }
+
     private func saveFrame(from window: NSWindow) {
         defaults.set(NSStringFromRect(window.frame), forKey: frameDefaultsKey)
     }
@@ -95,10 +160,11 @@ final class SettingsWindowController: NSWindowController {
         guard let frameString = defaults.string(forKey: frameDefaultsKey) else {
             return false
         }
-        let frame = NSRectFromString(frameString)
+        var frame = NSRectFromString(frameString)
         guard frame.width > 0, frame.height > 0, frameIsVisible(frame) else {
             return false
         }
+        frame.size = viewModel.selectedPane.windowFrameSize
         window.setFrame(frame, display: false)
         return true
     }
@@ -150,4 +216,81 @@ final class SettingsWindowController: NSWindowController {
         }
         return nil
     }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.settingsGeneral, .settingsAppActions, .settingsFolderActions]
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.settingsGeneral, .settingsAppActions, .settingsFolderActions]
+    }
+
+    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.settingsGeneral, .settingsAppActions, .settingsFolderActions]
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        let pane: SettingsPane
+        switch itemIdentifier {
+        case .settingsGeneral:
+            pane = .general
+        case .settingsAppActions:
+            pane = .appActions
+        case .settingsFolderActions:
+            pane = .folderActions
+        default:
+            return nil
+        }
+
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        item.label = pane.title
+        item.paletteLabel = pane.title
+        item.toolTip = pane.title
+        item.image = NSImage(systemSymbolName: pane.symbolName, accessibilityDescription: pane.title)
+        item.target = self
+        item.action = #selector(selectPaneFromToolbar(_:))
+        return item
+    }
+
+    @objc
+    private func selectPaneFromToolbar(_ sender: NSToolbarItem) {
+        guard let window else { return }
+
+        let pane: SettingsPane
+        switch sender.itemIdentifier {
+        case .settingsGeneral:
+            pane = .general
+        case .settingsAppActions:
+            pane = .appActions
+        case .settingsFolderActions:
+            pane = .folderActions
+        default:
+            return
+        }
+
+        guard pane != viewModel.selectedPane else { return }
+
+        pendingPaneSession = SettingsPerformance.begin(.paneSwitch, metadata: ["pane": pane.rawValue])
+        pendingPaneReady = pane
+        viewModel.selectedPane = pane
+        window.toolbar?.selectedItemIdentifier = sender.itemIdentifier
+        applyWindowSizing(for: pane, animated: true)
+        DispatchQueue.main.async { [weak self] in
+            self?.paneDidAppear(pane)
+        }
+    }
+}
+
+private extension NSToolbar.Identifier {
+    static let settingsToolbar = NSToolbar.Identifier("DocktorSettingsToolbar")
+}
+
+private extension NSToolbarItem.Identifier {
+    static let settingsGeneral = NSToolbarItem.Identifier("DocktorSettingsGeneral")
+    static let settingsAppActions = NSToolbarItem.Identifier("DocktorSettingsAppActions")
+    static let settingsFolderActions = NSToolbarItem.Identifier("DocktorSettingsFolderActions")
 }

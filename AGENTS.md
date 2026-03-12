@@ -12,7 +12,7 @@ Native macOS utility that augments Dock icon interactions with click and scroll 
 
 ```bash
 xcodebuild -project Docktor.xcodeproj -scheme Docktor -configuration Debug build
-DOCKTOR_TEST_SUITE=1 ".build/Build/Products/Debug/Docktor.app/Contents/MacOS/Docktor"
+DOCKTOR_TEST_SUITE=1 "$(xcodebuild -project Docktor.xcodeproj -scheme Docktor -configuration Debug -showBuildSettings 2>/dev/null | awk -F' = ' 'BEGIN { dir = \"\" } /^[[:space:]]*BUILT_PRODUCTS_DIR = / { dir = $2 } /^[[:space:]]*EXECUTABLE_PATH = / { print dir \"/\" $2; exit }')"
 swift tools/generate_icons.swift
 ./scripts/release.sh 0.0.1
 ```

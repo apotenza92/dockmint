@@ -5,12 +5,14 @@ final class AppServices {
     static let live = AppServices(
         preferences: Preferences.shared,
         coordinator: DockExposeCoordinator.shared,
-        updateManager: UpdateManager.shared
+        updateManager: UpdateManager.shared,
+        folderOpenWithOptionsStore: FolderOpenWithOptionsStore()
     )
 
     let preferences: Preferences
     let coordinator: DockExposeCoordinator
     let updateManager: UpdateManager
+    let folderOpenWithOptionsStore: FolderOpenWithOptionsStore
 
     static var appDisplayName: String {
         if let displayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
@@ -30,9 +32,11 @@ final class AppServices {
 
     init(preferences: Preferences,
          coordinator: DockExposeCoordinator,
-         updateManager: UpdateManager) {
+         updateManager: UpdateManager,
+         folderOpenWithOptionsStore: FolderOpenWithOptionsStore) {
         self.preferences = preferences
         self.coordinator = coordinator
         self.updateManager = updateManager
+        self.folderOpenWithOptionsStore = folderOpenWithOptionsStore
     }
 }

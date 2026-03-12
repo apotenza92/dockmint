@@ -2,16 +2,37 @@ import Cocoa
 
 enum DockHitTest {
     enum PointKind: Equatable {
-        case dockIcon(String)
+        case appDockIcon(String)
+        case folderDockItem(URL)
         case dockBackground
         case outsideDock
     }
 
     static func bundleIdentifierAtPoint(_ point: CGPoint) -> String? {
-        if case let .dockIcon(bundle) = pointKind(at: point) {
+        if case let .appDockIcon(bundle) = pointKind(at: point) {
             return bundle
         }
         return nil
+    }
+
+    static func folderURLAtPoint(_ point: CGPoint) -> URL? {
+        if case let .folderDockItem(url) = pointKind(at: point) {
+            return url
+        }
+        return nil
+    }
+
+    static func classifyDockItem(subrole: String?, url: URL?) -> PointKind? {
+        switch subrole {
+        case "AXFolderDockItem":
+            guard let url, url.isFileURL else { return nil }
+            return .folderDockItem(url)
+        case "AXApplicationDockItem":
+            guard let bundleIdentifier = bundleIdentifier(forApplicationURL: url) else { return nil }
+            return .appDockIcon(bundleIdentifier)
+        default:
+            return nil
+        }
     }
 
     static func pointKind(at point: CGPoint) -> PointKind {
@@ -21,9 +42,8 @@ enum DockHitTest {
 
         var current: AXUIElement? = element
         while let el = current, isInDockProcess(el) {
-            if let bundle = bundleIdentifier(for: el), bundle != "com.apple.dock" {
-                Logger.debug("Hit test resolved bundle: \(bundle)")
-                return .dockIcon(bundle)
+            if let pointKind = dockItemKind(for: el) {
+                return pointKind
             }
             current = parent(of: el)
         }
@@ -127,25 +147,38 @@ enum DockHitTest {
         return inDock
     }
 
-    private static func bundleIdentifier(for element: AXUIElement) -> String? {
-        if let url: URL = attribute(element, for: kAXURLAttribute) {
-            if let bundle = Bundle(url: url), let id = bundle.bundleIdentifier {
-                Logger.debug("Bundle from AXURL: \(id)")
-                return id == "com.apple.dock" ? nil : id
+    private static func dockItemKind(for element: AXUIElement) -> PointKind? {
+        let subrole: String? = attribute(element, for: kAXSubroleAttribute)
+        let url: URL? = attribute(element, for: kAXURLAttribute)
+
+        if let pointKind = classifyDockItem(subrole: subrole, url: url) {
+            switch pointKind {
+            case .folderDockItem(let url):
+                Logger.debug("Hit test resolved folder URL: \(url.path)")
+            case .appDockIcon(let bundle):
+                Logger.debug("Hit test resolved bundle: \(bundle)")
+            case .dockBackground, .outsideDock:
+                break
             }
+            return pointKind
         }
 
-        if let title: String = attribute(element, for: kAXTitleAttribute) {
-            if let match = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == title }) {
-                if let id = match.bundleIdentifier, id != "com.apple.dock" {
-                    Logger.debug("Bundle from title match: \(id)")
-                    return id
-                }
-            }
+        if subrole == "AXApplicationDockItem" {
+            let title: String = attribute(element, for: kAXTitleAttribute) ?? ""
+            Logger.debug("Hit test unresolved app Dock item title=\(title) url=\(url?.path ?? "nil")")
         }
 
-        Logger.debug("No bundleIdentifier resolved for element.")
         return nil
+    }
+
+    private static func bundleIdentifier(forApplicationURL url: URL?) -> String? {
+        guard let url else { return nil }
+        guard let bundle = Bundle(url: url), let bundleIdentifier = bundle.bundleIdentifier else {
+            Logger.debug("No bundleIdentifier resolved from AXURL: \(url.path)")
+            return nil
+        }
+        Logger.debug("Bundle from AXURL: \(bundleIdentifier)")
+        return bundleIdentifier == "com.apple.dock" ? nil : bundleIdentifier
     }
 
     private static func attribute<T>(_ element: AXUIElement, for key: String) -> T? {

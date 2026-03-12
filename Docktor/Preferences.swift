@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Combine
 import ServiceManagement
@@ -25,6 +26,471 @@ enum DockAction: String, CaseIterable, Codable {
         case .bringAllToFront: return "Bring All to Front"
         case .hideOthers: return "Hide Others"
         case .singleAppMode: return "Single App Mode"
+        }
+    }
+}
+
+struct DockFolderOpenApplicationOption: Identifiable, Hashable {
+    let identifier: String
+    let displayName: String
+
+    var id: String { identifier }
+    var isFinder: Bool { identifier == DockFolderOpenApplicationCatalog.finderBundleIdentifier }
+
+    static let none = DockFolderOpenApplicationOption(identifier: DockFolderOpenApplicationCatalog.noneIdentifier,
+                                                      displayName: "-")
+}
+
+enum DockFolderOpenApplicationCatalog {
+    static let noneIdentifier = "none"
+    static let dockIdentifier = "dock"
+    static let finderBundleIdentifier = "com.apple.finder"
+
+    private static let additionalBundleIdentifiers = [
+        finderBundleIdentifier,
+        "com.apple.Terminal",
+        "com.googlecode.iterm2",
+        "com.mitchellh.ghostty",
+        "com.github.wez.wezterm",
+        "dev.warp.Warp-Stable",
+        "co.zeit.hyper",
+        "org.alacritty",
+        "net.kovidgoyal.kitty",
+        "com.microsoft.VSCode",
+        "com.visualstudio.code.oss",
+        "com.todesktop.230313mzl4w4u92",
+        "dev.zed.Zed"
+    ]
+
+    @MainActor
+    static func options(including selectedIdentifier: String? = nil) -> [DockFolderOpenApplicationOption] {
+        DockFolderOpenApplicationOptionsCache.shared.options(including: selectedIdentifier)
+    }
+
+    @MainActor
+    static func refreshOptionsCache() {
+        DockFolderOpenApplicationOptionsCache.shared.refresh()
+    }
+
+    static func minimalOptions() -> [DockFolderOpenApplicationOption] {
+        [
+            .none,
+            DockFolderOpenApplicationOption(identifier: dockIdentifier, displayName: "Dock"),
+            DockFolderOpenApplicationOption(identifier: finderBundleIdentifier, displayName: "Finder")
+        ]
+    }
+
+    static func placeholderOption(for identifier: String) -> DockFolderOpenApplicationOption {
+        DockFolderOpenApplicationOption(
+            identifier: normalize(identifier),
+            displayName: "Missing App (\(normalize(identifier)))"
+        )
+    }
+
+    fileprivate static func discoveredOptions() -> [DockFolderOpenApplicationOption] {
+        var optionsByIdentifier: [String: DockFolderOpenApplicationOption] = Dictionary(
+            uniqueKeysWithValues: minimalOptions().map { ($0.identifier, $0) }
+        )
+
+        for applicationURL in discoveredApplicationURLs() {
+            guard let option = option(for: applicationURL) else { continue }
+            optionsByIdentifier[option.identifier] = option
+        }
+
+        for bundleIdentifier in additionalBundleIdentifiers {
+            guard let option = option(forBundleIdentifier: bundleIdentifier) else { continue }
+            optionsByIdentifier[option.identifier] = option
+        }
+
+        let sortedApplications = optionsByIdentifier.values
+            .filter { $0.identifier != noneIdentifier && $0.identifier != dockIdentifier }
+            .sorted { lhs, rhs in
+                if lhs.isFinder != rhs.isFinder {
+                    return lhs.isFinder
+                }
+                return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+            }
+
+        return [
+            .none,
+            DockFolderOpenApplicationOption(identifier: dockIdentifier, displayName: "Dock")
+        ] + sortedApplications
+    }
+
+    static func applicationURL(for identifier: String) -> URL? {
+        let normalizedIdentifier = normalize(identifier)
+        guard normalizedIdentifier != noneIdentifier, normalizedIdentifier != dockIdentifier else { return nil }
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: normalizedIdentifier)
+    }
+
+    static func isFinder(_ identifier: String) -> Bool {
+        normalize(identifier) == finderBundleIdentifier
+    }
+
+    static func isDock(_ identifier: String) -> Bool {
+        normalize(identifier) == dockIdentifier
+    }
+
+    static func normalize(_ identifier: String) -> String {
+        switch identifier {
+        case "", noneIdentifier:
+            return noneIdentifier
+        case dockIdentifier, "com.apple.dock":
+            return dockIdentifier
+        case "finder":
+            return finderBundleIdentifier
+        default:
+            return identifier
+        }
+    }
+
+    private static func discoveredApplicationURLs() -> [URL] {
+        guard #available(macOS 12.0, *) else { return [] }
+        let sampleFolderURL = FileManager.default.homeDirectoryForCurrentUser
+        return NSWorkspace.shared.urlsForApplications(toOpen: sampleFolderURL)
+    }
+
+    private static func option(for applicationURL: URL) -> DockFolderOpenApplicationOption? {
+        guard let bundleIdentifier = Bundle(url: applicationURL)?.bundleIdentifier else {
+            return nil
+        }
+        return DockFolderOpenApplicationOption(identifier: bundleIdentifier,
+                                               displayName: FileManager.default.displayName(atPath: applicationURL.path))
+    }
+
+    private static func option(forBundleIdentifier bundleIdentifier: String) -> DockFolderOpenApplicationOption? {
+        guard let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+            return nil
+        }
+        return DockFolderOpenApplicationOption(identifier: bundleIdentifier,
+                                               displayName: FileManager.default.displayName(atPath: applicationURL.path))
+    }
+}
+
+@MainActor
+final class DockFolderOpenApplicationOptionsCache {
+    static let shared = DockFolderOpenApplicationOptionsCache()
+
+    private var cachedOptions: [DockFolderOpenApplicationOption]
+
+    private init() {
+        cachedOptions = DockFolderOpenApplicationCatalog.discoveredOptions()
+    }
+
+    func options(including selectedIdentifier: String? = nil) -> [DockFolderOpenApplicationOption] {
+        let normalizedSelectedIdentifier = DockFolderOpenApplicationCatalog.normalize(
+            selectedIdentifier ?? DockFolderOpenApplicationCatalog.noneIdentifier
+        )
+        guard normalizedSelectedIdentifier != DockFolderOpenApplicationCatalog.noneIdentifier,
+              cachedOptions.contains(where: { $0.identifier == normalizedSelectedIdentifier }) == false else {
+            return cachedOptions
+        }
+
+        var options = cachedOptions
+        options.append(DockFolderOpenApplicationCatalog.placeholderOption(for: normalizedSelectedIdentifier))
+        return options
+    }
+
+    func refresh() {
+        cachedOptions = DockFolderOpenApplicationCatalog.discoveredOptions()
+    }
+}
+
+enum DockFolderView: String, CaseIterable, Codable {
+    case automatic
+    case icon
+    case list
+    case column
+
+    var displayName: String {
+        switch self {
+        case .automatic: return "Finder Default"
+        case .icon: return "Icon"
+        case .list: return "List"
+        case .column: return "Column"
+        }
+    }
+}
+
+enum DockFolderSortBy: String, CaseIterable, Codable {
+    case none
+    case name
+    case kind
+    case dateLastOpened
+    case dateAdded
+    case dateModified
+    case dateCreated
+    case size
+    case tags
+
+    var displayName: String {
+        switch self {
+        case .none: return "Default"
+        case .name: return "Name"
+        case .kind: return "Kind"
+        case .dateLastOpened: return "Date Last Opened"
+        case .dateAdded: return "Date Added"
+        case .dateModified: return "Date Modified"
+        case .dateCreated: return "Date Created"
+        case .size: return "Size"
+        case .tags: return "Tags"
+        }
+    }
+}
+
+enum DockFolderGroupBy: String, CaseIterable, Codable {
+    case none
+    case name
+    case kind
+    case application
+    case dateLastOpened
+    case dateAdded
+    case dateModified
+    case dateCreated
+    case size
+    case tags
+
+    var displayName: String {
+        switch self {
+        case .none: return "None"
+        case .name: return "Name"
+        case .kind: return "Kind"
+        case .application: return "Application"
+        case .dateLastOpened: return "Date Last Opened"
+        case .dateAdded: return "Date Added"
+        case .dateModified: return "Date Modified"
+        case .dateCreated: return "Date Created"
+        case .size: return "Size"
+        case .tags: return "Tags"
+        }
+    }
+
+    var defaultSortBy: DockFolderSortBy? {
+        switch self {
+        case .none:
+            return nil
+        case .name:
+            return .name
+        case .kind:
+            return .kind
+        case .application:
+            return .name
+        case .dateLastOpened:
+            return .dateLastOpened
+        case .dateAdded:
+            return .dateAdded
+        case .dateModified:
+            return .dateModified
+        case .dateCreated:
+            return .dateCreated
+        case .size:
+            return .size
+        case .tags:
+            return .tags
+        }
+    }
+}
+
+enum DockFolderStackSortBy: String, CaseIterable, Codable {
+    case current
+    case name
+    case dateAdded
+    case dateModified
+    case dateCreated
+    case kind
+
+    var displayName: String {
+        switch self {
+        case .current: return "Current"
+        case .name: return "Name"
+        case .dateAdded: return "Date Added"
+        case .dateModified: return "Date Modified"
+        case .dateCreated: return "Date Created"
+        case .kind: return "Kind"
+        }
+    }
+}
+
+enum DockFolderStackDisplayAs: String, CaseIterable, Codable {
+    case current
+    case folder
+    case stack
+
+    var displayName: String {
+        switch self {
+        case .current: return "Current"
+        case .folder: return "Folder"
+        case .stack: return "Stack"
+        }
+    }
+}
+
+enum DockFolderStackViewContentAs: String, CaseIterable, Codable {
+    case current
+    case fan
+    case grid
+    case list
+    case automatic
+
+    var displayName: String {
+        switch self {
+        case .current: return "Current"
+        case .fan: return "Fan"
+        case .grid: return "Grid"
+        case .list: return "List"
+        case .automatic: return "Automatic"
+        }
+    }
+}
+
+struct DockFolderAction: Codable, Equatable {
+    var openInApplicationIdentifier: String
+    var view: DockFolderView
+    var sortBy: DockFolderSortBy
+    var groupBy: DockFolderGroupBy
+    var dockSortBy: DockFolderStackSortBy
+    var dockDisplayAs: DockFolderStackDisplayAs
+    var dockViewContentAs: DockFolderStackViewContentAs
+
+    static let none = DockFolderAction(openInApplicationIdentifier: DockFolderOpenApplicationCatalog.noneIdentifier,
+                                       view: .automatic,
+                                       sortBy: .none,
+                                       groupBy: .none,
+                                       dockSortBy: .current,
+                                       dockDisplayAs: .current,
+                                       dockViewContentAs: .current)
+
+    var isConfigured: Bool {
+        DockFolderOpenApplicationCatalog.normalize(openInApplicationIdentifier) != DockFolderOpenApplicationCatalog.noneIdentifier
+    }
+
+    var opensInFinder: Bool {
+        DockFolderOpenApplicationCatalog.isFinder(openInApplicationIdentifier)
+    }
+
+    var opensInDock: Bool {
+        DockFolderOpenApplicationCatalog.isDock(openInApplicationIdentifier)
+    }
+
+    var isFinderPassthrough: Bool {
+        opensInFinder && view == .automatic
+    }
+
+    var appliesDockOverrides: Bool {
+        dockSortBy != .current || dockDisplayAs != .current || dockViewContentAs != .current
+    }
+
+    var storageValue: String {
+        "\(DockFolderOpenApplicationCatalog.normalize(openInApplicationIdentifier))|\(view.rawValue)|\(sortBy.rawValue)|\(groupBy.rawValue)|\(dockSortBy.rawValue)|\(dockDisplayAs.rawValue)|\(dockViewContentAs.rawValue)"
+    }
+
+    var debugName: String {
+        if !isConfigured {
+            return "none"
+        }
+        return storageValue
+    }
+
+    init(openInApplicationIdentifier: String,
+         view: DockFolderView,
+         sortBy: DockFolderSortBy,
+         groupBy: DockFolderGroupBy = .none,
+         dockSortBy: DockFolderStackSortBy = .current,
+         dockDisplayAs: DockFolderStackDisplayAs = .current,
+         dockViewContentAs: DockFolderStackViewContentAs = .current) {
+        self.openInApplicationIdentifier = DockFolderOpenApplicationCatalog.normalize(openInApplicationIdentifier)
+        self.view = view
+        if view == .automatic {
+            self.sortBy = .none
+            self.groupBy = .none
+        } else {
+            self.sortBy = sortBy
+            self.groupBy = groupBy
+        }
+        self.dockSortBy = dockSortBy
+        self.dockDisplayAs = dockDisplayAs
+        self.dockViewContentAs = dockViewContentAs
+    }
+
+    init(storageValue: String) {
+        let parts = storageValue.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        if parts.count == 7,
+           let view = DockFolderView(rawValue: parts[1]),
+           let sortBy = DockFolderSortBy(rawValue: parts[2]),
+           let groupBy = DockFolderGroupBy(rawValue: parts[3]),
+           let dockSortBy = DockFolderStackSortBy(rawValue: parts[4]),
+           let dockDisplayAs = DockFolderStackDisplayAs(rawValue: parts[5]),
+           let dockViewContentAs = DockFolderStackViewContentAs(rawValue: parts[6]) {
+            self.init(openInApplicationIdentifier: DockFolderOpenApplicationCatalog.normalize(parts[0]),
+                      view: view,
+                      sortBy: sortBy,
+                      groupBy: groupBy,
+                      dockSortBy: dockSortBy,
+                      dockDisplayAs: dockDisplayAs,
+                      dockViewContentAs: dockViewContentAs)
+            return
+        }
+
+        if parts.count == 4,
+           let view = DockFolderView(rawValue: parts[1]),
+           let sortBy = DockFolderSortBy(rawValue: parts[2]),
+           let groupBy = DockFolderGroupBy(rawValue: parts[3]) {
+            self.init(openInApplicationIdentifier: DockFolderOpenApplicationCatalog.normalize(parts[0]),
+                      view: view,
+                      sortBy: sortBy,
+                      groupBy: groupBy,
+                      dockSortBy: .current,
+                      dockDisplayAs: .current,
+                      dockViewContentAs: .current)
+            return
+        }
+
+        if parts.count == 3,
+           let view = DockFolderView(rawValue: parts[1]),
+           let sortBy = DockFolderSortBy(rawValue: parts[2]) {
+            self.init(openInApplicationIdentifier: DockFolderOpenApplicationCatalog.normalize(parts[0]),
+                      view: view,
+                      sortBy: sortBy,
+                      groupBy: .none,
+                      dockSortBy: .current,
+                      dockDisplayAs: .current,
+                      dockViewContentAs: .current)
+            return
+        }
+
+        switch storageValue {
+        case "openFolder":
+            self.init(openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
+                      view: .automatic,
+                      sortBy: .none,
+                      groupBy: .none)
+        case "openFolderIconView":
+            self.init(openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
+                      view: .icon,
+                      sortBy: .none,
+                      groupBy: .none)
+        case "openFolderListView":
+            self.init(openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
+                      view: .list,
+                      sortBy: .none,
+                      groupBy: .none)
+        case "openFolderColumnView":
+            self.init(openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
+                      view: .column,
+                      sortBy: .none,
+                      groupBy: .none)
+        case "openFolderSortByName":
+            self.init(openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
+                      view: .list,
+                      sortBy: .name,
+                      groupBy: .none)
+        case "openFolderSortByDateModified":
+            self.init(openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
+                      view: .list,
+                      sortBy: .dateModified,
+                      groupBy: .none)
+        default:
+            self = .none
         }
     }
 }
@@ -133,6 +599,18 @@ final class Preferences: ObservableObject {
     private let shiftScrollDownActionKey = "shiftScrollDownAction"
     private let optionScrollDownActionKey = "optionScrollDownAction"
     private let shiftOptionScrollDownActionKey = "shiftOptionScrollDownAction"
+    private let folderClickActionKey = "folderClickAction"
+    private let shiftFolderClickActionKey = "shiftFolderClickAction"
+    private let optionFolderClickActionKey = "optionFolderClickAction"
+    private let shiftOptionFolderClickActionKey = "shiftOptionFolderClickAction"
+    private let folderScrollUpActionKey = "folderScrollUpAction"
+    private let shiftFolderScrollUpActionKey = "shiftFolderScrollUpAction"
+    private let optionFolderScrollUpActionKey = "optionFolderScrollUpAction"
+    private let shiftOptionFolderScrollUpActionKey = "shiftOptionFolderScrollUpAction"
+    private let folderScrollDownActionKey = "folderScrollDownAction"
+    private let shiftFolderScrollDownActionKey = "shiftFolderScrollDownAction"
+    private let optionFolderScrollDownActionKey = "optionFolderScrollDownAction"
+    private let shiftOptionFolderScrollDownActionKey = "shiftOptionFolderScrollDownAction"
     private let scrollDefaultsMigratedKey = "scrollDefaultsMigrated_v3"
     private let behaviorDefaultsMigratedKey = "behaviorDefaultsMigrated_v4"
     private let modifierDefaultsMigratedKey = "modifierDefaultsMigrated_v5"
@@ -155,7 +633,7 @@ final class Preferences: ObservableObject {
     private static let showOnStartupPreferenceKey = PreferenceKey<Bool>(name: "showOnStartup", defaultValue: false)
     private static let showMenuBarIconPreferenceKey = PreferenceKey<Bool>(name: "showMenuBarIcon", defaultValue: true)
     private static let firstLaunchCompletedPreferenceKey = PreferenceKey<Bool>(name: "firstLaunchCompleted", defaultValue: false)
-    private static let updateCheckFrequencyPreferenceKey = PreferenceKey<UpdateCheckFrequency>(name: "updateCheckFrequency", defaultValue: .daily)
+    private static let updateCheckFrequencyPreferenceKey = PreferenceKey<UpdateCheckFrequency>(name: "updateCheckFrequency", defaultValue: .weekly)
     private static let firstClickBehaviorPreferenceKey = PreferenceKey<FirstClickBehavior>(name: "firstClickBehavior", defaultValue: .activateApp)
     private static let lastUpdateCheckTimestampPreferenceKey = PreferenceKey<Double>(name: "lastUpdateCheckTimestamp", defaultValue: 0)
 
@@ -253,6 +731,30 @@ final class Preferences: ObservableObject {
         }
     }
 
+    @Published var folderClickAction: DockFolderAction {
+        didSet {
+            userDefaults.set(folderClickAction.storageValue, forKey: folderClickActionKey)
+        }
+    }
+
+    @Published var shiftFolderClickAction: DockFolderAction {
+        didSet {
+            userDefaults.set(shiftFolderClickAction.storageValue, forKey: shiftFolderClickActionKey)
+        }
+    }
+
+    @Published var optionFolderClickAction: DockFolderAction {
+        didSet {
+            userDefaults.set(optionFolderClickAction.storageValue, forKey: optionFolderClickActionKey)
+        }
+    }
+
+    @Published var shiftOptionFolderClickAction: DockFolderAction {
+        didSet {
+            userDefaults.set(shiftOptionFolderClickAction.storageValue, forKey: shiftOptionFolderClickActionKey)
+        }
+    }
+
     @Published var scrollUpAction: DockAction {
         didSet {
             userDefaults.set(scrollUpAction.rawValue, forKey: scrollUpActionKey)
@@ -277,6 +779,30 @@ final class Preferences: ObservableObject {
         }
     }
 
+    @Published var folderScrollUpAction: DockFolderAction {
+        didSet {
+            userDefaults.set(folderScrollUpAction.storageValue, forKey: folderScrollUpActionKey)
+        }
+    }
+
+    @Published var shiftFolderScrollUpAction: DockFolderAction {
+        didSet {
+            userDefaults.set(shiftFolderScrollUpAction.storageValue, forKey: shiftFolderScrollUpActionKey)
+        }
+    }
+
+    @Published var optionFolderScrollUpAction: DockFolderAction {
+        didSet {
+            userDefaults.set(optionFolderScrollUpAction.storageValue, forKey: optionFolderScrollUpActionKey)
+        }
+    }
+
+    @Published var shiftOptionFolderScrollUpAction: DockFolderAction {
+        didSet {
+            userDefaults.set(shiftOptionFolderScrollUpAction.storageValue, forKey: shiftOptionFolderScrollUpActionKey)
+        }
+    }
+
     @Published var scrollDownAction: DockAction {
         didSet {
             userDefaults.set(scrollDownAction.rawValue, forKey: scrollDownActionKey)
@@ -298,6 +824,30 @@ final class Preferences: ObservableObject {
     @Published var shiftOptionScrollDownAction: DockAction {
         didSet {
             userDefaults.set(shiftOptionScrollDownAction.rawValue, forKey: shiftOptionScrollDownActionKey)
+        }
+    }
+
+    @Published var folderScrollDownAction: DockFolderAction {
+        didSet {
+            userDefaults.set(folderScrollDownAction.storageValue, forKey: folderScrollDownActionKey)
+        }
+    }
+
+    @Published var shiftFolderScrollDownAction: DockFolderAction {
+        didSet {
+            userDefaults.set(shiftFolderScrollDownAction.storageValue, forKey: shiftFolderScrollDownActionKey)
+        }
+    }
+
+    @Published var optionFolderScrollDownAction: DockFolderAction {
+        didSet {
+            userDefaults.set(optionFolderScrollDownAction.storageValue, forKey: optionFolderScrollDownActionKey)
+        }
+    }
+
+    @Published var shiftOptionFolderScrollDownAction: DockFolderAction {
+        didSet {
+            userDefaults.set(shiftOptionFolderScrollDownAction.storageValue, forKey: shiftOptionFolderScrollDownActionKey)
         }
     }
 
@@ -430,6 +980,33 @@ final class Preferences: ObservableObject {
         var shiftScrollDownAction = Self.loadAction(from: userDefaults, forKey: shiftScrollDownActionKey) ?? .none
         var optionScrollDownAction = Self.loadAction(from: userDefaults, forKey: optionScrollDownActionKey) ?? .none
         var shiftOptionScrollDownAction = Self.loadAction(from: userDefaults, forKey: shiftOptionScrollDownActionKey) ?? .none
+        let folderClickAction = Self.loadFolderAction(from: userDefaults, forKey: folderClickActionKey) ?? DockFolderAction(
+            openInApplicationIdentifier: DockFolderOpenApplicationCatalog.dockIdentifier,
+            view: .automatic,
+            sortBy: .none,
+            groupBy: .none
+        )
+        let shiftFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderClickActionKey) ?? .none
+        let optionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderClickActionKey) ?? .none
+        let shiftOptionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderClickActionKey) ?? .none
+        let folderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: folderScrollUpActionKey) ?? DockFolderAction(
+            openInApplicationIdentifier: "com.apple.Terminal",
+            view: .automatic,
+            sortBy: .none,
+            groupBy: .none
+        )
+        let shiftFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderScrollUpActionKey) ?? .none
+        let optionFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderScrollUpActionKey) ?? .none
+        let shiftOptionFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderScrollUpActionKey) ?? .none
+        let folderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: folderScrollDownActionKey) ?? DockFolderAction(
+            openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
+            view: .automatic,
+            sortBy: .none,
+            groupBy: .none
+        )
+        let shiftFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderScrollDownActionKey) ?? .none
+        let optionFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderScrollDownActionKey) ?? .none
+        let shiftOptionFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderScrollDownActionKey) ?? .none
 
         let modifierMigrated = userDefaults.bool(forKey: modifierDefaultsMigratedKey)
         if !modifierMigrated {
@@ -498,6 +1075,18 @@ final class Preferences: ObservableObject {
         Self.seedIfMissing(shiftScrollDownAction, in: userDefaults, forKey: shiftScrollDownActionKey)
         Self.seedIfMissing(optionScrollDownAction, in: userDefaults, forKey: optionScrollDownActionKey)
         Self.seedIfMissing(shiftOptionScrollDownAction, in: userDefaults, forKey: shiftOptionScrollDownActionKey)
+        Self.seedIfMissing(folderClickAction, in: userDefaults, forKey: folderClickActionKey)
+        Self.seedIfMissing(shiftFolderClickAction, in: userDefaults, forKey: shiftFolderClickActionKey)
+        Self.seedIfMissing(optionFolderClickAction, in: userDefaults, forKey: optionFolderClickActionKey)
+        Self.seedIfMissing(shiftOptionFolderClickAction, in: userDefaults, forKey: shiftOptionFolderClickActionKey)
+        Self.seedIfMissing(folderScrollUpAction, in: userDefaults, forKey: folderScrollUpActionKey)
+        Self.seedIfMissing(shiftFolderScrollUpAction, in: userDefaults, forKey: shiftFolderScrollUpActionKey)
+        Self.seedIfMissing(optionFolderScrollUpAction, in: userDefaults, forKey: optionFolderScrollUpActionKey)
+        Self.seedIfMissing(shiftOptionFolderScrollUpAction, in: userDefaults, forKey: shiftOptionFolderScrollUpActionKey)
+        Self.seedIfMissing(folderScrollDownAction, in: userDefaults, forKey: folderScrollDownActionKey)
+        Self.seedIfMissing(shiftFolderScrollDownAction, in: userDefaults, forKey: shiftFolderScrollDownActionKey)
+        Self.seedIfMissing(optionFolderScrollDownAction, in: userDefaults, forKey: optionFolderScrollDownActionKey)
+        Self.seedIfMissing(shiftOptionFolderScrollDownAction, in: userDefaults, forKey: shiftOptionFolderScrollDownActionKey)
 
         // General settings defaults
         let showOnStartup = settingsStore.value(for: Self.showOnStartupPreferenceKey)
@@ -542,14 +1131,26 @@ final class Preferences: ObservableObject {
         self.shiftClickAction = shiftClickAction
         self.optionClickAction = optionClickAction
         self.shiftOptionClickAction = shiftOptionClickAction
+        self.folderClickAction = folderClickAction
+        self.shiftFolderClickAction = shiftFolderClickAction
+        self.optionFolderClickAction = optionFolderClickAction
+        self.shiftOptionFolderClickAction = shiftOptionFolderClickAction
         self.scrollUpAction = scrollUpAction
         self.shiftScrollUpAction = shiftScrollUpAction
         self.optionScrollUpAction = optionScrollUpAction
         self.shiftOptionScrollUpAction = shiftOptionScrollUpAction
+        self.folderScrollUpAction = folderScrollUpAction
+        self.shiftFolderScrollUpAction = shiftFolderScrollUpAction
+        self.optionFolderScrollUpAction = optionFolderScrollUpAction
+        self.shiftOptionFolderScrollUpAction = shiftOptionFolderScrollUpAction
         self.scrollDownAction = scrollDownAction
         self.shiftScrollDownAction = shiftScrollDownAction
         self.optionScrollDownAction = optionScrollDownAction
         self.shiftOptionScrollDownAction = shiftOptionScrollDownAction
+        self.folderScrollDownAction = folderScrollDownAction
+        self.shiftFolderScrollDownAction = shiftFolderScrollDownAction
+        self.optionFolderScrollDownAction = optionFolderScrollDownAction
+        self.shiftOptionFolderScrollDownAction = shiftOptionFolderScrollDownAction
         self.showOnStartup = showOnStartup
         self.showMenuBarIcon = showMenuBarIcon
         self.firstLaunchCompleted = firstLaunchCompleted
@@ -562,9 +1163,19 @@ final class Preferences: ObservableObject {
         return DockAction(rawValue: raw)
     }
 
+    private static func loadFolderAction(from defaults: UserDefaults, forKey key: String) -> DockFolderAction? {
+        guard let raw = defaults.string(forKey: key) else { return nil }
+        return DockFolderAction(storageValue: raw)
+    }
+
     private static func seedIfMissing(_ action: DockAction, in defaults: UserDefaults, forKey key: String) {
         guard defaults.object(forKey: key) == nil else { return }
         defaults.set(action.rawValue, forKey: key)
+    }
+
+    private static func seedIfMissing(_ action: DockFolderAction, in defaults: UserDefaults, forKey key: String) {
+        guard defaults.object(forKey: key) == nil else { return }
+        defaults.set(action.storageValue, forKey: key)
     }
 
     private static func seedMissingAppExposeGateSlots(in map: inout [String: Bool],
@@ -600,6 +1211,11 @@ final class Preferences: ObservableObject {
     }
 
     func resetMappingsToDefaults() {
+        resetAppActionsToDefaults()
+        resetFolderActionsToDefaults()
+    }
+
+    func resetAppActionsToDefaults() {
         clickAction = .appExpose
         firstClickBehavior = .activateApp
         firstClickAppExposeRequiresMultipleWindows = true
@@ -623,6 +1239,38 @@ final class Preferences: ObservableObject {
         shiftScrollDownAction = .none
         optionScrollDownAction = .none
         shiftOptionScrollDownAction = .none
+    }
+
+    func resetFolderActionsToDefaults() {
+        folderClickAction = DockFolderAction(
+            openInApplicationIdentifier: DockFolderOpenApplicationCatalog.dockIdentifier,
+            view: .automatic,
+            sortBy: .none,
+            groupBy: .none
+        )
+        shiftFolderClickAction = .none
+        optionFolderClickAction = .none
+        shiftOptionFolderClickAction = .none
+
+        folderScrollUpAction = DockFolderAction(
+            openInApplicationIdentifier: "com.apple.Terminal",
+            view: .automatic,
+            sortBy: .none,
+            groupBy: .none
+        )
+        shiftFolderScrollUpAction = .none
+        optionFolderScrollUpAction = .none
+        shiftOptionFolderScrollUpAction = .none
+
+        folderScrollDownAction = DockFolderAction(
+            openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
+            view: .automatic,
+            sortBy: .none,
+            groupBy: .none
+        )
+        shiftFolderScrollDownAction = .none
+        optionFolderScrollDownAction = .none
+        shiftOptionFolderScrollDownAction = .none
     }
 
     func markUpdateCheckNow(_ date: Date = Date()) {

@@ -6,6 +6,15 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.2.0]
+
+- Redesigned Settings into a single compact scrollable window with inline section headers, right-aligned reset actions, richer update status text, and expanded Folder Actions controls.
+- Added configurable folder-stack click and scroll actions, including Dock passthrough, Finder opening with view/group/sort options, and custom “Open With” app targets with async app-list warming.
+- Improved settings responsiveness with instrumented internal timing logs, fixed pane sizing, shared settings services, and a local benchmark harness for reproducible settings timing runs.
+- Hardened Dock hit testing and gesture routing with folder Dock item detection, alternate-axis scroll handling, and drag-path changes that preserve native Dock drag/reorder/drop behavior while reducing drag-start stutter.
+- Improved launch/runtime robustness across Docktor-family installs, update-state reporting, and macOS 14 compatibility by removing deprecated activation calls and tightening main-actor isolation around workspace/private-window APIs.
+- Added coverage and tooling updates for the new Dock hit-test and scroll decision paths, plus Xcode-aware Debug app resolution in shared test helpers and developer docs.
+
 ## [v0.1.2]
 
 - Fixed modifier-click timing so modifier double-click actions no longer get swallowed by the first modifier click, while single-click modifier actions still execute correctly after the system double-click interval.

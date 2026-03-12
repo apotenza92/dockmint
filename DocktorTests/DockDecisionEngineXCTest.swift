@@ -275,10 +275,12 @@ final class DockDecisionEngineXCTest: XCTestCase {
     func testResolvedScrollDeltaPrefersAppKitInterpretedDeltaWhenAvailable() {
         XCTAssertEqual(
             DockDecisionEngine.resolvedScrollDelta(
-                pointDelta: -8,
-                fixedDelta: -1,
-                coarseDelta: 1,
-                appKitDelta: 6,
+                primaryAxis: DecisionScrollAxisDelta(
+                    pointDelta: -8,
+                    fixedDelta: -1,
+                    coarseDelta: 1,
+                    appKitDelta: 6
+                ),
                 isContinuous: false
             ),
             6
@@ -288,10 +290,12 @@ final class DockDecisionEngineXCTest: XCTestCase {
     func testResolvedScrollDeltaPrefersPointForContinuousDevices() {
         XCTAssertEqual(
             DockDecisionEngine.resolvedScrollDelta(
-                pointDelta: -8,
-                fixedDelta: -1,
-                coarseDelta: 1,
-                appKitDelta: 0,
+                primaryAxis: DecisionScrollAxisDelta(
+                    pointDelta: -8,
+                    fixedDelta: -1,
+                    coarseDelta: 1,
+                    appKitDelta: 0
+                ),
                 isContinuous: true
             ),
             -8
@@ -301,10 +305,12 @@ final class DockDecisionEngineXCTest: XCTestCase {
     func testResolvedScrollDeltaUsesMajoritySignForDiscreteWheelConflicts() {
         XCTAssertEqual(
             DockDecisionEngine.resolvedScrollDelta(
-                pointDelta: 12,
-                fixedDelta: 1,
-                coarseDelta: -1,
-                appKitDelta: 0,
+                primaryAxis: DecisionScrollAxisDelta(
+                    pointDelta: 12,
+                    fixedDelta: 1,
+                    coarseDelta: -1,
+                    appKitDelta: 0
+                ),
                 isContinuous: false
             ),
             12
@@ -314,10 +320,12 @@ final class DockDecisionEngineXCTest: XCTestCase {
     func testResolvedScrollDeltaFallsBackWhenNoMajorityForDiscreteWheel() {
         XCTAssertEqual(
             DockDecisionEngine.resolvedScrollDelta(
-                pointDelta: -8,
-                fixedDelta: 0,
-                coarseDelta: 1,
-                appKitDelta: 0,
+                primaryAxis: DecisionScrollAxisDelta(
+                    pointDelta: -8,
+                    fixedDelta: 0,
+                    coarseDelta: 1,
+                    appKitDelta: 0
+                ),
                 isContinuous: false
             ),
             1
@@ -325,13 +333,98 @@ final class DockDecisionEngineXCTest: XCTestCase {
 
         XCTAssertEqual(
             DockDecisionEngine.resolvedScrollDelta(
-                pointDelta: 0,
-                fixedDelta: 2,
-                coarseDelta: 0,
-                appKitDelta: 0,
+                primaryAxis: DecisionScrollAxisDelta(
+                    pointDelta: 0,
+                    fixedDelta: 2,
+                    coarseDelta: 0,
+                    appKitDelta: 0
+                ),
                 isContinuous: false
             ),
             2
+        )
+    }
+
+    func testResolvedScrollDeltaCanUseAlternateAxisForShiftModifiedScroll() {
+        XCTAssertEqual(
+            DockDecisionEngine.resolvedScrollDelta(
+                primaryAxis: DecisionScrollAxisDelta(
+                    pointDelta: 0,
+                    fixedDelta: 0,
+                    coarseDelta: 0,
+                    appKitDelta: 0
+                ),
+                alternateAxis: DecisionScrollAxisDelta(
+                    pointDelta: -9,
+                    fixedDelta: 0,
+                    coarseDelta: 0,
+                    appKitDelta: 0
+                ),
+                isContinuous: true,
+                prefersAlternateAxis: true
+            ),
+            -9
+        )
+
+        XCTAssertEqual(
+            DockDecisionEngine.resolvedScrollDelta(
+                primaryAxis: DecisionScrollAxisDelta(
+                    pointDelta: -1,
+                    fixedDelta: 0,
+                    coarseDelta: 0,
+                    appKitDelta: 0
+                ),
+                alternateAxis: DecisionScrollAxisDelta(
+                    pointDelta: -7,
+                    fixedDelta: 0,
+                    coarseDelta: 0,
+                    appKitDelta: 0
+                ),
+                isContinuous: true,
+                prefersAlternateAxis: true
+            ),
+            -7
+        )
+    }
+
+    func testDockHitTestClassifiesApplicationDockItemFromBundleURL() {
+        let finderURL = URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app", isDirectory: true)
+
+        XCTAssertEqual(
+            DockHitTest.classifyDockItem(subrole: "AXApplicationDockItem", url: finderURL),
+            .appDockIcon("com.apple.finder")
+        )
+    }
+
+    func testDockHitTestRequiresBundleURLForApplicationDockItem() {
+        XCTAssertNil(
+            DockHitTest.classifyDockItem(subrole: "AXApplicationDockItem", url: nil)
+        )
+
+        let applicationsURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        XCTAssertNil(
+            DockHitTest.classifyDockItem(subrole: "AXApplicationDockItem", url: applicationsURL)
+        )
+    }
+
+    func testDockHitTestClassifiesFolderDockItemFromFileURL() {
+        let downloadsURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+
+        XCTAssertEqual(
+            DockHitTest.classifyDockItem(subrole: "AXFolderDockItem", url: downloadsURL),
+            .folderDockItem(downloadsURL)
+        )
+    }
+
+    func testDockHitTestIgnoresNonAppDockSubroles() {
+        XCTAssertNil(
+            DockHitTest.classifyDockItem(subrole: "AXTrashDockItem", url: nil)
+        )
+        XCTAssertNil(
+            DockHitTest.classifyDockItem(subrole: "AXSeparatorDockItem", url: nil)
+        )
+        XCTAssertNil(
+            DockHitTest.classifyDockItem(subrole: nil, url: nil)
         )
     }
 }

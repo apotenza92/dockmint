@@ -11,6 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController?
     private let legacyAppBundleNames = ["DockActioner.app", "Dockter.app"]
     private let currentAppBundleName = "Docktor.app"
+    private let betaAppBundleName = "Docktor Beta.app"
+    private let docktorFamilyBundleIdentifiers: Set<String> = ["pzc.Dockter", "pzc.Dockter.beta"]
+    private let docktorFamilyAppNames: Set<String> = ["Docktor", "Docktor Beta", "Dockter", "DockActioner"]
     private let openSettingsLaunchArguments: Set<String> = ["--settings", "-settings", "--open-settings"]
     private let openSettingsDistributedNotification = Notification.Name("pzc.Docktor.openSettings")
     private var openSettingsObserver: NSObjectProtocol?
@@ -68,25 +71,107 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @discardableResult
     private func resolveRunningInstances(shouldRequestSettingsFromExisting: Bool) -> Bool {
-        guard let bundleId = Bundle.main.bundleIdentifier else { return false }
         let me = ProcessInfo.processInfo.processIdentifier
-        let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+        let others = NSWorkspace.shared.runningApplications
             .filter { $0.processIdentifier != me }
+            .filter(isDocktorFamilyApplication)
 
         guard !others.isEmpty else { return false }
 
-        if shouldRequestSettingsFromExisting {
-            Logger.log("Existing instance detected (\(others.map { $0.processIdentifier })); requesting settings open in running instance")
+        let sameBundleInstances = others.filter(isSameBundleLocation)
+        let otherBundleInstances = others.filter { !isSameBundleLocation($0) }
+
+        if shouldRequestSettingsFromExisting, !sameBundleInstances.isEmpty, otherBundleInstances.isEmpty {
+            Logger.log("Existing same-bundle instance detected (\(sameBundleInstances.map { $0.processIdentifier })); requesting settings open in running instance")
             requestSettingsOpenFromExistingInstance()
             NSApp.terminate(nil)
             return true
         }
 
-        Logger.log("Terminating other running instances: \(others.map { $0.processIdentifier })")
-        for app in others {
-            _ = app.terminate()
-        }
+        Logger.log("Terminating other Docktor instances: \(describeRunningApplications(others))")
+        terminateRunningApplications(others)
         return false
+    }
+
+    private func isDocktorFamilyApplication(_ app: NSRunningApplication) -> Bool {
+        if let bundleIdentifier = app.bundleIdentifier,
+           docktorFamilyBundleIdentifiers.contains(bundleIdentifier) {
+            return true
+        }
+
+        if let localizedName = app.localizedName,
+           docktorFamilyAppNames.contains(localizedName) {
+            return true
+        }
+
+        guard let bundleURL = app.bundleURL?.standardizedFileURL else {
+            return false
+        }
+
+        let appBundleNames = Set(legacyAppBundleNames + [currentAppBundleName, betaAppBundleName])
+        if appBundleNames.contains(bundleURL.lastPathComponent) {
+            return true
+        }
+
+        guard let bundle = Bundle(url: bundleURL) else {
+            return false
+        }
+
+        let bundleMetadata = [
+            bundle.object(forInfoDictionaryKey: "CFBundleName") as? String,
+            bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
+            bundle.object(forInfoDictionaryKey: "CFBundleExecutable") as? String,
+        ]
+
+        return bundleMetadata.contains { value in
+            guard let value else { return false }
+            return docktorFamilyAppNames.contains(value)
+        }
+    }
+
+    private func isSameBundleLocation(_ app: NSRunningApplication) -> Bool {
+        guard let bundleURL = app.bundleURL?.standardizedFileURL else { return false }
+        return bundleURL == Bundle.main.bundleURL.standardizedFileURL
+    }
+
+    private func describeRunningApplications(_ apps: [NSRunningApplication]) -> String {
+        apps.map { app in
+            let name = app.localizedName ?? "unknown"
+            let bundleIdentifier = app.bundleIdentifier ?? "nil"
+            let path = app.bundleURL?.path ?? "unknown"
+            return "\(name)(pid=\(app.processIdentifier), bundleId=\(bundleIdentifier), path=\(path))"
+        }
+        .joined(separator: ", ")
+    }
+
+    private func terminateRunningApplications(_ apps: [NSRunningApplication]) {
+        for app in apps {
+            let terminateRequested = app.terminate()
+            if waitForTermination(of: app, timeout: 2.0) {
+                continue
+            }
+
+            Logger.log("Docktor instance pid \(app.processIdentifier) did not quit after terminate(requested=\(terminateRequested)); forcing termination")
+            let forced = app.forceTerminate()
+            if waitForTermination(of: app, timeout: 1.0) {
+                continue
+            }
+
+            Logger.log("Docktor instance pid \(app.processIdentifier) still running after forceTerminate(requested=\(forced))")
+        }
+    }
+
+    private func waitForTermination(of app: NSRunningApplication, timeout: TimeInterval) -> Bool {
+        if app.isTerminated {
+            return true
+        }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while !app.isTerminated, Date() < deadline {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+
+        return app.isTerminated
     }
 
     private func startObservingOpenSettingsRequests() {
@@ -205,6 +290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func showSettingsWindow() {
         Logger.log("Opening settings window")
-        settingsWindowController.show()
+        let openSession = SettingsPerformance.begin(.settingsOpen)
+        settingsWindowController.show(openSession: openSession)
     }
 }

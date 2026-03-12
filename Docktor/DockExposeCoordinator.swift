@@ -26,6 +26,8 @@ final class DockExposeCoordinator: ObservableObject {
     private var lastHideOthersTargetBundle: String?
     private var pendingClickContext: PendingClickContext?
     private var pendingClickWasDragged = false
+    private var pendingFolderClickContext: PendingFolderClickContext?
+    private var pendingFolderClickWasDragged = false
     private var appExposeInvocationToken: UUID?
     private var clickRecoveryTokenCounter: UInt64 = 0
     private var clickSequenceCounter: UInt64 = 0
@@ -44,7 +46,11 @@ final class DockExposeCoordinator: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleWorkspaceActivation(notification)
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let activatedBundle = app.bundleIdentifier else { return }
+            Task { @MainActor [weak self, activatedBundle] in
+                self?.handleWorkspaceActivation(bundleIdentifier: activatedBundle)
+            }
         }
     }
 
@@ -88,6 +94,14 @@ final class DockExposeCoordinator: ObservableObject {
         let followsDeferredModifierFirstClick: Bool
         let consumeClick: Bool
         let forceFirstClickActivateFallback: Bool
+    }
+
+    private struct PendingFolderClickContext {
+        let location: CGPoint
+        let buttonNumber: Int
+        let flags: CGEventFlags
+        let folderURL: URL
+        let consumeMouseUp: Bool
     }
 
     private struct DeferredAppExposeContext {
@@ -177,20 +191,42 @@ final class DockExposeCoordinator: ObservableObject {
 
     private enum Edge { case bottom, left, right }
 
-    private func bundleIdentifierNearPoint(_ point: CGPoint) -> String? {
-        if let b = DockHitTest.bundleIdentifierAtPoint(point) {
-            return b
-        }
-        // AX hit-testing can be quite sensitive to being exactly on top of the icon; sample a small grid.
-        let offsets: [CGFloat] = [-10, 0, 10]
-        for dy in offsets {
-            for dx in offsets {
-                if dx == 0 && dy == 0 { continue }
-                let p = CGPoint(x: point.x + dx, y: point.y + dy)
-                if let b = DockHitTest.bundleIdentifierAtPoint(p) {
-                    return b
-                }
+    private func dockTargetNearPoint(_ point: CGPoint) -> DockHitTest.PointKind? {
+        let candidates = [
+            point,
+            CGPoint(x: point.x - 10, y: point.y - 10),
+            CGPoint(x: point.x, y: point.y - 10),
+            CGPoint(x: point.x + 10, y: point.y - 10),
+            CGPoint(x: point.x - 10, y: point.y),
+            CGPoint(x: point.x + 10, y: point.y),
+            CGPoint(x: point.x - 10, y: point.y + 10),
+            CGPoint(x: point.x, y: point.y + 10),
+            CGPoint(x: point.x + 10, y: point.y + 10)
+        ]
+
+        for candidate in candidates {
+            let kind = DockHitTest.pointKind(at: candidate)
+            switch kind {
+            case .appDockIcon, .folderDockItem:
+                return kind
+            case .dockBackground, .outsideDock:
+                continue
             }
+        }
+
+        return nil
+    }
+
+    private func bundleIdentifierNearPoint(_ point: CGPoint) -> String? {
+        if case let .appDockIcon(bundle)? = dockTargetNearPoint(point) {
+            return bundle
+        }
+        return nil
+    }
+
+    private func folderURLNearPoint(_ point: CGPoint) -> URL? {
+        if case let .folderDockItem(url)? = dockTargetNearPoint(point) {
+            return url
         }
         return nil
     }
@@ -413,6 +449,8 @@ final class DockExposeCoordinator: ObservableObject {
             if phase == .up {
                 pendingClickContext = nil
                 pendingClickWasDragged = false
+                pendingFolderClickContext = nil
+                pendingFolderClickWasDragged = false
             }
             Logger.debug("WORKFLOW: Non-primary mouse button \(buttonNumber) - allowing through")
             return false
@@ -421,6 +459,28 @@ final class DockExposeCoordinator: ObservableObject {
         switch phase {
         case .down:
             Logger.debug("WORKFLOW: Click down at \(location.x), \(location.y) button \(buttonNumber)")
+            if let folderURL = folderURLNearPoint(location) {
+                if let deferred = deferredModifierFirstClickContext {
+                    executeDeferredModifierFirstClick(deferred, reason: "newDockFolderClick")
+                }
+                pendingClickContext = nil
+                pendingClickWasDragged = false
+                let action = configuredFolderAction(for: .click, flags: flags)
+                let consumeMouseUp = shouldConsumeFolderMouseUp(for: action)
+                pendingFolderClickContext = PendingFolderClickContext(location: location,
+                                                                     buttonNumber: buttonNumber,
+                                                                     flags: flags,
+                                                                     folderURL: folderURL,
+                                                                     consumeMouseUp: consumeMouseUp)
+                pendingFolderClickWasDragged = false
+                if diagnosticsCaptureActive {
+                    lastDockBundleHit = "folder:\(folderURL.path)"
+                    lastDockBundleHitAt = Date()
+                }
+                Logger.debug("WORKFLOW: Folder click down path=\(folderURL.path) action=\(action.debugName) modifier=\(modifierCombination(from: flags).rawValue) consumeMouseUp=\(consumeMouseUp)")
+                return false
+            }
+
             let nowUptime = ProcessInfo.processInfo.systemUptime
             let hitBundle = bundleIdentifierNearPoint(location)
             guard let clickedBundle = hitBundle else {
@@ -433,8 +493,13 @@ final class DockExposeCoordinator: ObservableObject {
                 }
                 pendingClickContext = nil
                 pendingClickWasDragged = false
+                pendingFolderClickContext = nil
+                pendingFolderClickWasDragged = false
                 return false
             }
+
+            pendingFolderClickContext = nil
+            pendingFolderClickWasDragged = false
 
             if let staleContext = pendingClickContext {
                 let recoveryPoint = DockHitTest.neutralBackgroundPoint(near: staleContext.location)
@@ -484,14 +549,6 @@ final class DockExposeCoordinator: ObservableObject {
             clickSequenceCounter += 1
             let clickSequence = clickSequenceCounter
             let frontmostBefore = FrontmostAppTracker.frontmostBundleIdentifier()
-            let isRunningAtDown = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == clickedBundle }
-            let shouldSampleWindowCountAtMouseDown = shouldSampleWindowCountAtMouseDown(for: clickedBundle,
-                                                                                        flags: flags,
-                                                                                        frontmostBefore: frontmostBefore,
-                                                                                        isRunningAtDown: isRunningAtDown)
-            let windowCountAtMouseDown = shouldSampleWindowCountAtMouseDown
-                ? WindowManager.totalWindowCount(bundleIdentifier: clickedBundle)
-                : nil
             let context = PendingClickContext(clickSequence: clickSequence,
                                               mouseDownUptime: nowUptime,
                                               location: location,
@@ -499,7 +556,7 @@ final class DockExposeCoordinator: ObservableObject {
                                               flags: flags,
                                               frontmostBefore: frontmostBefore,
                                               clickedBundle: clickedBundle,
-                                              windowCountAtMouseDown: windowCountAtMouseDown,
+                                              windowCountAtMouseDown: nil,
                                               followsFirstClickActivation: isRecentFirstClickActivatePassThrough(for: clickedBundle),
                                               followsDeferredModifierFirstClick: followsDeferredModifierFirstClick,
                                               consumeClick: false,
@@ -523,7 +580,7 @@ final class DockExposeCoordinator: ObservableObject {
                 schedulePendingDockClickWatchdog(context: pendingClickContext!,
                                                  watchdogToken: pendingDockClickWatchdogTokenCounter)
             }
-            Logger.debug("APP_EXPOSE_TRACE: click=\(clickSequence) phase=down bundle=\(clickedBundle) frontmostBefore=\(frontmostBefore ?? "nil") runningAtDown=\(isRunningAtDown) windowsAtDown=\(windowCountAtMouseDown.map(String.init) ?? "nil") modifier=\(modifierCombination(from: flags).rawValue) firstClickBehavior=\(preferences.firstClickBehavior.rawValue) consumePlanned=\(consumeClick) fallbackLatched=\(forceFirstClickActivateFallback)")
+            Logger.debug("APP_EXPOSE_TRACE: click=\(clickSequence) phase=down bundle=\(clickedBundle) frontmostBefore=\(frontmostBefore ?? "nil") windowsAtDown=nil modifier=\(modifierCombination(from: flags).rawValue) firstClickBehavior=\(preferences.firstClickBehavior.rawValue) consumePlanned=\(consumeClick) fallbackLatched=\(forceFirstClickActivateFallback)")
             pendingClickWasDragged = false
             let consumeMouseDown = shouldConsumeMouseDown(for: pendingClickContext!)
             if consumeMouseDown {
@@ -535,14 +592,39 @@ final class DockExposeCoordinator: ObservableObject {
             return consumeMouseDown
 
         case .dragged:
-            if let context = pendingClickContext {
+            if let context = pendingFolderClickContext {
+                pendingFolderClickWasDragged = true
+                Logger.debug("WORKFLOW: Folder click became drag; suppressing folder action")
+                return false
+            }
+            if pendingClickContext != nil {
                 pendingClickWasDragged = true
-                Logger.debug("WORKFLOW: Click became drag; suppressing click action")
-                return context.consumeClick
+                Logger.debug("WORKFLOW: Click became drag; suppressing click action and allowing Dock drag behavior")
+                return false
             }
             return false
 
         case .up:
+            if let context = pendingFolderClickContext {
+                defer {
+                    pendingFolderClickContext = nil
+                    pendingFolderClickWasDragged = false
+                }
+
+                if pendingFolderClickWasDragged {
+                    Logger.debug("WORKFLOW: Folder drag completed; allowing Dock drop behavior")
+                    return false
+                }
+
+                let resolvedFolderAtMouseUp = folderURLNearPoint(location) ?? context.folderURL
+                let effectiveContext = PendingFolderClickContext(location: context.location,
+                                                                 buttonNumber: context.buttonNumber,
+                                                                 flags: context.flags,
+                                                                 folderURL: resolvedFolderAtMouseUp,
+                                                                 consumeMouseUp: context.consumeMouseUp)
+                return executeFolderClickAction(effectiveContext)
+            }
+
             guard let context = pendingClickContext else {
                 if isAppExposeInteractionActive(frontmostBefore: FrontmostAppTracker.frontmostBundleIdentifier()),
                    let recoveredBundle = bundleIdentifierNearPoint(location) {
@@ -701,11 +783,11 @@ final class DockExposeCoordinator: ObservableObject {
                                       action: DockAction?) -> CGPoint? {
         if action == .appExpose {
             if let current = CGEvent(source: nil)?.location,
-               case .dockIcon(let currentBundle) = DockHitTest.pointKind(at: current),
+               case .appDockIcon(let currentBundle) = DockHitTest.pointKind(at: current),
                currentBundle == expectedBundle {
                 return current
             }
-            if case .dockIcon(let originalBundle) = DockHitTest.pointKind(at: location),
+            if case .appDockIcon(let originalBundle) = DockHitTest.pointKind(at: location),
                originalBundle == expectedBundle {
                 return location
             }
@@ -721,10 +803,12 @@ final class DockExposeCoordinator: ObservableObject {
             switch DockHitTest.pointKind(at: current) {
             case .dockBackground:
                 return current
-            case .dockIcon(let bundle):
+            case .appDockIcon(let bundle):
                 if action != .appExpose, action != .minimizeAll, bundle == expectedBundle {
                     return current
                 }
+            case .folderDockItem:
+                break
             case .outsideDock:
                 break
             }
@@ -1014,9 +1098,57 @@ final class DockExposeCoordinator: ObservableObject {
 
     private func handleScroll(at location: CGPoint, direction: ScrollDirection, flags: CGEventFlags) -> Bool {
         Logger.debug("WORKFLOW: Scroll \(direction == .up ? "up" : "down") received at \(location.x), \(location.y)")
-        guard let clickedBundle = DockHitTest.bundleIdentifierAtPoint(location) else {
+        guard let target = dockTargetNearPoint(location) else {
             return false
         }
+
+        switch target {
+        case .folderDockItem(let folderURL):
+            return handleFolderScroll(at: location, folderURL: folderURL, direction: direction, flags: flags)
+        case .appDockIcon(let clickedBundle):
+            return handleAppScroll(at: location, clickedBundle: clickedBundle, direction: direction, flags: flags)
+        case .dockBackground, .outsideDock:
+            return false
+        }
+    }
+
+    private func handleFolderScroll(at location: CGPoint,
+                                    folderURL: URL,
+                                    direction: ScrollDirection,
+                                    flags: CGEventFlags) -> Bool {
+        let now = Date().timeIntervalSinceReferenceDate
+        let source: ActionSource = direction == .up ? .scrollUp : .scrollDown
+        let action = configuredFolderAction(for: source, flags: flags)
+        let targetKey = "folder:\(folderURL.path)"
+
+        if diagnosticsCaptureActive {
+            lastDockBundleHit = targetKey
+            lastDockBundleHitAt = Date()
+        }
+
+        let debounceWindow: TimeInterval = 0.35
+        if let lastTime = lastScrollTime,
+           let lastBundle = lastScrollBundle,
+           let lastDir = lastScrollDirection,
+           lastBundle == targetKey,
+           lastDir == direction,
+           now - lastTime < debounceWindow {
+            Logger.debug("WORKFLOW: Folder scroll debounced for \(folderURL.path) direction \(direction == .up ? "up" : "down") (Δ \(now - lastTime))")
+            return action != .none
+        }
+
+        lastScrollTime = now
+        lastScrollBundle = targetKey
+        lastScrollDirection = direction
+
+        Logger.log("WORKFLOW: Executing folder scroll \(direction == .up ? "up" : "down") action: \(action.debugName) for \(folderURL.path) (modifiers=\(modifierCombination(from: flags).rawValue), flags=\(flags.rawValue))")
+        return DockFolderActionExecutor.perform(action, folderURL: folderURL)
+    }
+
+    private func handleAppScroll(at location: CGPoint,
+                                 clickedBundle: String,
+                                 direction: ScrollDirection,
+                                 flags: CGEventFlags) -> Bool {
 
         let frontmostBefore = FrontmostAppTracker.frontmostBundleIdentifier()
 
@@ -1189,6 +1321,68 @@ final class DockExposeCoordinator: ObservableObject {
                 return preferences.shiftOptionScrollDownAction
             }
         }
+    }
+
+    private func configuredFolderAction(for source: ActionSource, flags: CGEventFlags) -> DockFolderAction {
+        switch source {
+        case .click:
+            switch modifierCombination(from: flags) {
+            case .none:
+                return preferences.folderClickAction
+            case .shift:
+                return preferences.shiftFolderClickAction
+            case .option:
+                return preferences.optionFolderClickAction
+            case .shiftOption:
+                return preferences.shiftOptionFolderClickAction
+            }
+        case .scrollUp:
+            switch modifierCombination(from: flags) {
+            case .none:
+                return preferences.folderScrollUpAction
+            case .shift:
+                return preferences.shiftFolderScrollUpAction
+            case .option:
+                return preferences.optionFolderScrollUpAction
+            case .shiftOption:
+                return preferences.shiftOptionFolderScrollUpAction
+            }
+        case .scrollDown:
+            switch modifierCombination(from: flags) {
+            case .none:
+                return preferences.folderScrollDownAction
+            case .shift:
+                return preferences.shiftFolderScrollDownAction
+            case .option:
+                return preferences.optionFolderScrollDownAction
+            case .shiftOption:
+                return preferences.shiftOptionFolderScrollDownAction
+            }
+        }
+    }
+
+    private func shouldConsumeFolderMouseUp(for action: DockFolderAction) -> Bool {
+        guard action.isConfigured else { return false }
+        // Let Dock handle its own stack interactions directly so drag/reorder/drop still work.
+        return !action.opensInDock
+    }
+
+    private func executeFolderClickAction(_ context: PendingFolderClickContext) -> Bool {
+        let action = configuredFolderAction(for: .click, flags: context.flags)
+        guard context.consumeMouseUp else {
+            Logger.debug("WORKFLOW: Allowing Dock folder click passthrough for \(context.folderURL.path) action=\(action.debugName)")
+            return false
+        }
+
+        if let releasePoint = DockHitTest.neutralBackgroundPoint(near: context.location) {
+            postSyntheticMouseUpPassthrough(at: releasePoint, flags: [])
+            Logger.debug("WORKFLOW: Posted neutral folder mouse-up recovery for \(context.folderURL.path) point=(\(Int(releasePoint.x)),\(Int(releasePoint.y)))")
+        } else {
+            Logger.debug("WORKFLOW: No neutral folder recovery point available for \(context.folderURL.path)")
+        }
+
+        Logger.log("WORKFLOW: Executing folder click action: \(action.debugName) for \(context.folderURL.path) (modifiers=\(modifierCombination(from: context.flags).rawValue), flags=\(context.flags.rawValue))")
+        return DockFolderActionExecutor.perform(action, folderURL: context.folderURL)
     }
 
     private func decisionBehavior(from behavior: FirstClickBehavior) -> DecisionFirstClickBehavior {
@@ -1528,11 +1722,9 @@ final class DockExposeCoordinator: ObservableObject {
         appsWithoutWindowsInExpose.removeAll()
     }
 
-    private func handleWorkspaceActivation(_ notification: Notification) {
+    private func handleWorkspaceActivation(bundleIdentifier activatedBundle: String) {
         guard appExposeInvocationToken == nil else { return }
         guard lastTriggeredBundle != nil || currentExposeApp != nil else { return }
-        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              let activatedBundle = app.bundleIdentifier else { return }
 
         let trackedBundle = currentExposeApp ?? lastTriggeredBundle
         if activatedBundle == trackedBundle || activatedBundle == "com.apple.dock" {
@@ -2191,7 +2383,7 @@ final class DockExposeCoordinator: ObservableObject {
         if frontmost != bundleIdentifier {
             if !WindowManager.activateAndShowMainWindow(bundleIdentifier: bundleIdentifier),
                let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) {
-                _ = app.activate(options: [.activateIgnoringOtherApps])
+                _ = WindowManager.activate(app)
             }
         }
 
@@ -2238,7 +2430,7 @@ final class DockExposeCoordinator: ObservableObject {
                     app.unhide()
                 }
                 _ = WindowManager.activateAndShowMainWindow(bundleIdentifier: bundleIdentifier)
-                _ = app.activate(options: [.activateIgnoringOtherApps])
+                _ = WindowManager.activate(app)
             }
 
             self.scheduleAppExposeInvocationCompletion(token: token,
@@ -2272,16 +2464,6 @@ final class DockExposeCoordinator: ObservableObject {
         }
     }
 
-    private func shouldSampleWindowCountAtMouseDown(for bundleIdentifier: String,
-                                                    flags: CGEventFlags,
-                                                    frontmostBefore: String?,
-                                                    isRunningAtDown: Bool) -> Bool {
-        guard isRunningAtDown else { return false }
-        guard frontmostBefore != bundleIdentifier else { return false }
-        guard modifierCombination(from: flags) == .none else { return false }
-        return preferences.firstClickBehavior == .appExpose
-    }
-
     private func isRecentExposeInteraction(maxAge: TimeInterval = 2.0) -> Bool {
         guard let lastExposeInteractionAt else { return false }
         return Date().timeIntervalSince(lastExposeInteractionAt) <= maxAge
@@ -2311,7 +2493,7 @@ final class DockExposeCoordinator: ObservableObject {
                 if app.isHidden {
                     app.unhide()
                 }
-                _ = app.activate(options: [.activateIgnoringOtherApps])
+                _ = WindowManager.activate(app)
                 Logger.debug("APP_EXPOSE_DECISION: activation assertion for \(bundleIdentifier) reason=\(reason) phase=\(phase) token=\(token)")
             }
         }

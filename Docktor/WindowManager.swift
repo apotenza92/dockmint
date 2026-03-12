@@ -22,6 +22,11 @@ enum WindowManager {
         let isMinimized: Bool
     }
 
+    @discardableResult
+    static func activate(_ app: NSRunningApplication) -> Bool {
+        app.activate()
+    }
+
     /// Hide all windows of an app (Cmd+H equivalent)
     static func hideAllWindows(bundleIdentifier: String) -> Bool {
         guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
@@ -51,7 +56,7 @@ enum WindowManager {
         }
 
         // Final fallback: activate target app then send Cmd+H.
-        _ = app.activate(options: [.activateIgnoringOtherApps])
+        _ = activate(app)
         let frontmost = waitForFrontmost(bundleIdentifier, timeout: 0.25)
             ? bundleIdentifier
             : NSWorkspace.shared.frontmostApplication?.bundleIdentifier
@@ -85,7 +90,7 @@ enum WindowManager {
             return false
         }
         app.unhide()
-        _ = app.activate(options: [.activateIgnoringOtherApps])
+        _ = activate(app)
         Logger.log("WindowManager: Unhid and activated \(bundleIdentifier)")
         return true
     }
@@ -152,11 +157,11 @@ enum WindowManager {
         guard restoredCount > 0 else { return false }
         
         // Bring the app to the front.
-        _ = app.activate(options: [.activateIgnoringOtherApps])
+        _ = activate(app)
         
         // Re-assert frontmost after a short delay to cover race conditions.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            _ = app.activate(options: [.activateIgnoringOtherApps])
+            _ = activate(app)
         }
         
         return true
@@ -257,7 +262,7 @@ enum WindowManager {
             return false
         }
         
-        _ = app.activate(options: [.activateIgnoringOtherApps])
+        _ = activate(app)
         
         // Wait a moment for app to activate, then show main window
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -326,7 +331,7 @@ enum WindowManager {
             }
         }
         
-        _ = app.activate(options: [.activateIgnoringOtherApps])
+        _ = activate(app)
         
         Logger.log("WindowManager: Raised \(raisedCount) current-space standard windows for \(bundleIdentifier) (restored=\(restoredCount))")
         return raisedCount > 0 || restoredCount > 0
@@ -343,7 +348,7 @@ enum WindowManager {
         if app.isHidden {
             app.unhide()
         }
-        _ = app.activate(options: [.activateIgnoringOtherApps])
+        _ = activate(app)
 
         var hiddenCount = 0
         for other in NSWorkspace.shared.runningApplications {
