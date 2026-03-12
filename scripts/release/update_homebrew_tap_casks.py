@@ -353,7 +353,7 @@ def main() -> int:
     parser.add_argument(
         "--legacy-alias-mode",
         choices=("keep", "remove"),
-        default=os.environ.get("DOCKMINT_LEGACY_HOMEBREW_ALIAS_MODE", "keep"),
+        default=os.environ.get("DOCKMINT_LEGACY_HOMEBREW_ALIAS_MODE", "remove"),
         help="Whether to keep or remove legacy docktor Homebrew alias casks",
     )
     args = parser.parse_args()

@@ -2,6 +2,8 @@
 
 This document defines the release sequence for the Docktor to Dockmint migration.
 
+Current state: `R4` is the default. New releases should ship from `apotenza92/dockmint` with cleanup bundle identifiers, no legacy Homebrew aliases, and no legacy appcast mirroring unless there is an explicit rollback reason.
+
 ## Release Sequence
 
 | Release | Channel | `rename_phase` | Bundle IDs | Sparkle feed host | Homebrew aliases |
@@ -17,15 +19,18 @@ Canonical releases must run from `apotenza92/dockmint`.
 
 Repository variables on the canonical repo:
 
-- `DOCKMINT_RENAME_PHASE=transition` for R1 and R2, then `cleanup` for R3 and later.
-- `DOCKMINT_LEGACY_FEED_REPO=apotenza92/docktor`
-- `DOCKMINT_PUBLISH_LEGACY_APPCASTS=true` for R1, R2, and R3
-- `DOCKMINT_LEGACY_HOMEBREW_ALIAS_MODE=keep` for R1, R2, and R3
+- `DOCKMINT_RENAME_PHASE=cleanup`
+- `DOCKMINT_LEGACY_FEED_REPO=apotenza92/docktor` only if you intentionally need to mirror legacy feeds again
+- `DOCKMINT_PUBLISH_LEGACY_APPCASTS=false`
+- `DOCKMINT_LEGACY_HOMEBREW_ALIAS_MODE=remove`
 
 Repository secrets on the canonical repo:
 
-- `LEGACY_FEED_GITHUB_TOKEN` so release automation can mirror appcasts into `apotenza92/docktor`
 - the normal signing, notarization, Sparkle, and Homebrew release secrets described in `AGENTS.md`
+
+Optional only for an emergency rollback to the legacy mirror path:
+
+- `LEGACY_FEED_GITHUB_TOKEN`
 
 `workflow_dispatch` also supports one-off overrides for:
 
@@ -34,7 +39,7 @@ Repository secrets on the canonical repo:
 - `publish_legacy_appcasts`
 - `legacy_homebrew_alias_mode`
 
-Use those overrides when preparing R3 or R4 if you do not want to update repo variables before tagging.
+Use those overrides only when intentionally replaying an older migration phase or doing rollback work.
 
 ## Per-Release Checklist
 

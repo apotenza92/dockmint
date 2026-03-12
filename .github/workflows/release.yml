@@ -13,7 +13,7 @@ on:
       rename_phase:
         description: "Release phase for the Docktor -> Dockmint migration"
         required: false
-        default: transition
+        default: cleanup
         type: choice
         options:
           - transition
@@ -108,7 +108,7 @@ jobs:
 
           BUILD_NUMBER="$(python3 -c 'import re,sys; tag=sys.argv[1]; m=re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?", tag); assert m; major,minor,patch=int(m.group(1)),int(m.group(2)),int(m.group(3)); prerelease=m.group(4); core=(major*1_000_000)+(minor*1_000)+patch; beta_match=(re.search(r"(?:beta|b)[.-]?(\d+)$", prerelease, flags=re.IGNORECASE) if prerelease else None); stage=(90_000 if prerelease is None else (min(max(int(beta_match.group(1)),1),89_999) if beta_match else 50_000)); print((core*100_000)+stage)' "$TAG")"
 
-          RENAME_PHASE="${INPUT_RENAME_PHASE:-${VAR_RENAME_PHASE:-transition}}"
+          RENAME_PHASE="${INPUT_RENAME_PHASE:-${VAR_RENAME_PHASE:-cleanup}}"
           if [[ "$RENAME_PHASE" != "transition" && "$RENAME_PHASE" != "cleanup" ]]; then
             echo "::error::rename phase must be 'transition' or 'cleanup' (got '$RENAME_PHASE')"
             exit 1

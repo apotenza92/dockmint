@@ -30,7 +30,7 @@ def validate_release_workflow() -> None:
     )
     expect(
         text,
-        r"default: transition\s+        type: choice\s+        options:\s+          - transition\s+          - cleanup",
+        r"default: cleanup\s+        type: choice\s+        options:\s+          - transition\s+          - cleanup",
         "release.yml rename_phase input must expose transition/cleanup choices",
     )
     expect(
@@ -117,8 +117,8 @@ def validate_homebrew_script() -> None:
     )
     expect(
         text,
-        r'default=os\.environ\.get\("DOCKMINT_LEGACY_HOMEBREW_ALIAS_MODE", "keep"\)',
-        "update_homebrew_tap_casks.py must default legacy alias mode to keep",
+        r'default=os\.environ\.get\("DOCKMINT_LEGACY_HOMEBREW_ALIAS_MODE", "remove"\)',
+        "update_homebrew_tap_casks.py must default legacy alias mode to remove",
     )
     expect(
         text,

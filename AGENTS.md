@@ -25,7 +25,7 @@ swift tools/generate_icons.swift
   - Beta: `vX.Y.Z-beta.N`
 - `Dockmint.xcodeproj` `MARKETING_VERSION` must match tag core version (`X.Y.Z`).
 - `CHANGELOG.md` must contain a matching heading: `## [vX.Y.Z]` or `## [vX.Y.Z-beta.N]`.
-- The Docktor to Dockmint rollout is staged. Use `docs/dockmint-migration.md` for the R1-R4 sequence and required release variables.
+- The Docktor to Dockmint migration has completed its `R4` defaults. Use `docs/dockmint-migration.md` for the historical sequence and the current cleanup-era release variables.
 - Canonical tagged releases must run from `apotenza92/dockmint`; `./scripts/release.sh` blocks releases from legacy origins unless `DOCKMINT_ALLOW_LEGACY_RELEASE_REPO=1` is set.
 
 ## CI and Distribution
@@ -48,7 +48,6 @@ swift tools/generate_icons.swift
 - `APPLE_NOTARYTOOL_KEY_P8_BASE64`
 - `SPARKLE_PRIVATE_ED_KEY`
 - `HOMEBREW_TAP_TOKEN`
-- `LEGACY_FEED_GITHUB_TOKEN`
 
 ## UI/Product Constraints
 
