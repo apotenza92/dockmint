@@ -293,6 +293,21 @@ def decode_signing_secret(signing_secret: str | None) -> tuple[str, bytes] | Non
     )
 
 
+def normalize_signing_secret_for_tool(signing_secret: str | None) -> str | None:
+    if signing_secret is None:
+        return None
+    normalized = signing_secret.strip()
+    if not normalized:
+        return None
+    if (
+        len(normalized) >= 2
+        and normalized[0] == normalized[-1]
+        and normalized[0] in {"'", '"'}
+    ):
+        return normalized[1:-1].strip()
+    return normalized
+
+
 def load_signing_key(signing_secret: str | None):
     decoded = decode_signing_secret(signing_secret)
     if decoded is None:
@@ -495,9 +510,19 @@ def main() -> int:
     if sign_update_bin is not None and not sign_update_bin.exists():
         raise RuntimeError(f"Sparkle sign_update tool was not found at {sign_update_bin}")
 
-    decoded_signing_secret = decode_signing_secret(signing_secret)
+    decoded_signing_secret = None
+    if sign_update_bin is not None:
+        try:
+            decoded_signing_secret = decode_signing_secret(signing_secret)
+        except RuntimeError:
+            decoded_signing_secret = None
+    else:
+        decoded_signing_secret = decode_signing_secret(signing_secret)
+
     normalized_signing_secret = (
-        decoded_signing_secret[0] if decoded_signing_secret is not None else None
+        decoded_signing_secret[0]
+        if decoded_signing_secret is not None
+        else normalize_signing_secret_for_tool(signing_secret)
     )
     private_key = None
     if sign_update_bin is None:
