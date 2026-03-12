@@ -235,6 +235,10 @@ def decode_signing_secret(signing_secret: str | None) -> tuple[str, bytes] | Non
     normalized = signing_secret.strip()
     if not normalized:
         return None
+    if normalized == "-":
+        raise RuntimeError(
+            "Unsupported Sparkle private key format: value was a single '-'. If you uploaded the secret with `gh secret set SPARKLE_PRIVATE_ED_KEY -b-`, GitHub stored the literal dash instead of reading stdin. Re-upload with `gh secret set SPARKLE_PRIVATE_ED_KEY --body \"$VALUE\"` or `gh secret set SPARKLE_PRIVATE_ED_KEY < file`."
+        )
 
     candidates = [normalized]
     if (

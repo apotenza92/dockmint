@@ -511,45 +511,6 @@ jobs:
           SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import base64
-          import os
-          import re
-
-          secret = os.environ.get("SPARKLE_PRIVATE_ED_KEY", "")
-          normalized = secret.strip()
-          if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {"'", '"'}:
-              normalized = normalized[1:-1].strip()
-
-          variants = [normalized]
-          compacted = re.sub(r"\s+", "", normalized)
-          if compacted != normalized:
-              variants.append(compacted)
-          escaped = compacted.replace("\\n", "").replace("\\r", "")
-          if escaped != compacted:
-              variants.append(escaped)
-
-          def decode_len(value: str) -> str:
-              try:
-                  return str(len(base64.b64decode(value, validate=False)))
-              except Exception as exc:
-                  return f"err:{type(exc).__name__}"
-
-          print(f"Sparkle secret chars={len(secret)}")
-          print(f"Sparkle secret normalized_chars={len(normalized)}")
-          print(f"Sparkle secret variant_decode_lens={[decode_len(v) for v in variants]}")
-
-          try:
-              first = base64.b64decode(variants[0], validate=False)
-              try:
-                  inner = first.decode("utf-8").strip()
-              except Exception:
-                  inner = ""
-              if inner:
-                  print(f"Sparkle secret nested_chars={len(inner)} nested_decode_len={decode_len(inner)}")
-          except Exception:
-              pass
-          PY
           python3 scripts/release/update_sparkle_appcasts.py \
             --repo "${{ github.repository }}" \
             --output-dir appcasts \
