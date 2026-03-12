@@ -19,13 +19,9 @@
 
       :root {
         color-scheme: light dark;
-        --bg: #ffffff;
-        --bg-gradient: linear-gradient(
-          135deg,
-          #f4fcfa 0%,
-          #dff4ed 48%,
-          #eef9f5 100%
-        );
+        --bg: #f7f7f8;
+        --surface: #ffffff;
+        --surface-hover: #f2f4f6;
         --text: #1a1a1a;
         --text-muted: #666;
         --text-subtle: #888;
@@ -53,13 +49,9 @@
 
       @media (prefers-color-scheme: dark) {
         :root {
-          --bg: #0a0a0a;
-          --bg-gradient: linear-gradient(
-            135deg,
-            #091412 0%,
-            #0f2420 48%,
-            #13312b 100%
-          );
+          --bg: #101113;
+          --surface: #181a1f;
+          --surface-hover: #20232a;
           --text: #ffffff;
           --text-muted: #888;
           --text-subtle: #666;
@@ -70,7 +62,7 @@
         }
 
         body .github-icon-link {
-          background: rgba(22, 24, 36, 0.82);
+          background: var(--surface);
           border-color: rgba(255, 255, 255, 0.14);
           color: #f5f7fb;
         }
@@ -109,7 +101,7 @@
         font-family:
           -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
           Arial, sans-serif;
-        background: var(--bg-gradient);
+        background: var(--bg);
         min-height: 100vh;
         display: flex;
         align-items: flex-start;
@@ -249,7 +241,7 @@
         padding: 0.55rem 0.8rem;
         border-radius: 12px;
         border: 1px solid var(--border);
-        background: rgba(255, 255, 255, 0.42);
+        background: var(--surface);
         text-decoration: none;
         transition:
           background-color 0.2s ease,
@@ -259,7 +251,7 @@
 
       .github-icon-link:hover {
         border-color: var(--channel-accent-border);
-        background: var(--channel-accent-soft);
+        background: var(--surface-hover);
       }
 
       .github-icon-link svg {

@@ -35,7 +35,3 @@ System Settings paths:
 xcodebuild -project Dockmint.xcodeproj -scheme Dockmint -configuration Debug build
 DOCKMINT_TEST_SUITE=1 "$(xcodebuild -project Dockmint.xcodeproj -scheme Dockmint -configuration Debug -showBuildSettings 2>/dev/null | awk -F' = ' 'BEGIN { dir = \"\" } /^[[:space:]]*BUILT_PRODUCTS_DIR = / { dir = $2 } /^[[:space:]]*EXECUTABLE_PATH = / { print dir \"/\" $2; exit }')"
 ```
-
-## Release Migration
-
-The Docktor to Dockmint rollout is staged across multiple releases. See [docs/dockmint-migration.md](docs/dockmint-migration.md) for the transition vs cleanup release sequence, required GitHub variables, and the R1-R4 checklist.
