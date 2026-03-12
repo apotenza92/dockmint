@@ -511,22 +511,28 @@ def main() -> int:
         raise RuntimeError(f"Sparkle sign_update tool was not found at {sign_update_bin}")
 
     decoded_signing_secret = None
-    if sign_update_bin is not None:
-        try:
-            decoded_signing_secret = decode_signing_secret(signing_secret)
-        except RuntimeError:
-            decoded_signing_secret = None
-    else:
+    decode_error: RuntimeError | None = None
+    try:
         decoded_signing_secret = decode_signing_secret(signing_secret)
+    except RuntimeError as exc:
+        decode_error = exc
+        if sign_update_bin is None:
+            raise
 
-    normalized_signing_secret = (
-        decoded_signing_secret[0]
-        if decoded_signing_secret is not None
-        else normalize_signing_secret_for_tool(signing_secret)
-    )
+    normalized_signing_secret = normalize_signing_secret_for_tool(signing_secret)
     private_key = None
-    if sign_update_bin is None:
-        private_key = load_signing_key(signing_secret)
+    if decoded_signing_secret is not None:
+        _, secret_bytes = decoded_signing_secret
+        if len(secret_bytes) == 32:
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+            private_key = Ed25519PrivateKey.from_private_bytes(secret_bytes)
+        elif sign_update_bin is None:
+            raise RuntimeError(
+                "Sparkle legacy 96-byte private key format requires the Sparkle sign_update tool. Set SPARKLE_SIGN_UPDATE_BIN or --sparkle-sign-update-bin."
+            )
+    elif decode_error is not None and sign_update_bin is None:
+        raise decode_error
 
     if args.require_signatures and normalized_signing_secret is None:
         raise RuntimeError(
@@ -578,7 +584,22 @@ def main() -> int:
     beta_notes = extract_notes(args.changelog, beta_track.tag_name)
 
     signatures: dict[str, str] = {}
-    if normalized_signing_secret is not None and sign_update_bin is not None:
+    if private_key is not None:
+        with tempfile.TemporaryDirectory(
+            prefix="dockmint-sparkle-sign-"
+        ) as temp_dir:
+            cache_dir = Path(temp_dir)
+            unique_assets = {
+                stable_arm_asset.name: stable_arm_asset,
+                stable_x64_asset.name: stable_x64_asset,
+                beta_arm_asset.name: beta_arm_asset,
+                beta_x64_asset.name: beta_x64_asset,
+            }
+            for asset in unique_assets.values():
+                signatures[asset.name] = sign_asset(
+                    asset, private_key, cache_dir, github_token=github_token
+                )
+    elif normalized_signing_secret is not None and sign_update_bin is not None:
         with tempfile.TemporaryDirectory(
             prefix="dockmint-sparkle-sign-"
         ) as temp_dir:
@@ -596,21 +617,6 @@ def main() -> int:
                     sign_update_bin,
                     cache_dir,
                     github_token=github_token,
-                )
-    elif private_key is not None:
-        with tempfile.TemporaryDirectory(
-            prefix="dockmint-sparkle-sign-"
-        ) as temp_dir:
-            cache_dir = Path(temp_dir)
-            unique_assets = {
-                stable_arm_asset.name: stable_arm_asset,
-                stable_x64_asset.name: stable_x64_asset,
-                beta_arm_asset.name: beta_arm_asset,
-                beta_x64_asset.name: beta_x64_asset,
-            }
-            for asset in unique_assets.values():
-                signatures[asset.name] = sign_asset(
-                    asset, private_key, cache_dir, github_token=github_token
                 )
 
     appcasts = {
