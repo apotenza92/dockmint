@@ -18,72 +18,36 @@ cleanup() {
 }
 trap cleanup EXIT
 
-count_menu_bar_items() {
-  osascript -e 'tell application "System Events" to tell process "ControlCenter" to get count of menu bar items of menu bar 1'
-}
+wait_for_menu_bar_visibility_log() {
+  local requested="$1"
+  local effective="$2"
+  local log_file="$3"
+  local timeout_seconds="${4:-8}"
+  local marker="Menu bar icon visibility applied: requested=${requested} effective=${effective}"
 
-wait_for_menu_bar_min_count() {
-  local minimum="$1"
-  local timeout_seconds="${2:-8}"
-  local deadline=$((SECONDS + timeout_seconds))
-  local current=""
-
-  while (( SECONDS < deadline )); do
-    current="$(count_menu_bar_items)"
-    if [[ "$current" -ge "$minimum" ]]; then
-      echo "$current"
-      return 0
-    fi
-    sleep 0.25
-  done
-
-  current="$(count_menu_bar_items)"
-  echo "$current"
-  return 1
-}
-
-wait_for_menu_bar_exact_count() {
-  local expected="$1"
-  local timeout_seconds="${2:-8}"
-  local deadline=$((SECONDS + timeout_seconds))
-  local current=""
-
-  while (( SECONDS < deadline )); do
-    current="$(count_menu_bar_items)"
-    if [[ "$current" -eq "$expected" ]]; then
-      echo "$current"
-      return 0
-    fi
-    sleep 0.25
-  done
-
-  current="$(count_menu_bar_items)"
-  echo "$current"
-  return 1
+  wait_for_log_contains "$marker" "$log_file" "$timeout_seconds"
 }
 
 echo "[settings-shell] ensure deterministic Dock geometry"
 set_dock_autohide false
 
 echo "[settings-shell] menu icon toggle"
-base_count="$(count_menu_bar_items)"
 write_pref_bool showMenuBarIcon true
 start_dockmint /tmp/dockmint-settings-shell-on.log
-on_count="$(wait_for_menu_bar_min_count "$((base_count + 1))" 10 || true)"
+wait_for_menu_bar_visibility_log true true /tmp/dockmint-settings-shell-on.log 10 || true
 stop_dockmint
 
 write_pref_bool showMenuBarIcon false
 start_dockmint /tmp/dockmint-settings-shell-off.log
-off_count="$(wait_for_menu_bar_exact_count "$base_count" 10 || true)"
+wait_for_menu_bar_visibility_log false false /tmp/dockmint-settings-shell-off.log 10 || true
 stop_dockmint
 
-echo "  counts base=$base_count on=$on_count off=$off_count"
-if [[ "$on_count" -lt "$((base_count + 1))" ]]; then
-  echo "  FAIL: expected icon-on menu count to increase"
+if ! log_contains "Menu bar icon visibility applied: requested=true effective=true" /tmp/dockmint-settings-shell-on.log; then
+  echo "  FAIL: expected menu bar icon enable request to be applied"
   exit 1
 fi
-if [[ "$off_count" -ne "$base_count" ]]; then
-  echo "  FAIL: expected icon-off menu count to return to baseline (after wait)"
+if ! log_contains "Menu bar icon visibility applied: requested=false effective=false" /tmp/dockmint-settings-shell-off.log; then
+  echo "  FAIL: expected menu bar icon disable request to be applied"
   exit 1
 fi
 

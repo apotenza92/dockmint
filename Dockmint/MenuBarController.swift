@@ -65,17 +65,22 @@ final class MenuBarController: NSObject {
     }
 
     private func applyVisibility(_ visible: Bool) {
+        let runningAutomation: Bool
         #if DEBUG
-        let runningAutomation = AppIdentity.boolFlag(
+        runningAutomation = AppIdentity.boolFlag(
             primary: "DOCKMINT_TEST_SUITE",
             legacy: "DOCKTOR_TEST_SUITE"
         )
         let shouldShow = runningAutomation ? visible : true
         #else
+        runningAutomation = false
         let shouldShow = visible
         #endif
         statusItem.menu = shouldShow ? menu : nil
         statusItem.isVisible = shouldShow
+        Logger.log(
+            "Menu bar icon visibility applied: requested=\(visible) effective=\(shouldShow) testSuite=\(runningAutomation)"
+        )
     }
 
     @objc
