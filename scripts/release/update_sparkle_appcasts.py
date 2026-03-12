@@ -198,11 +198,29 @@ def pick_latest(releases: list[Release]) -> Release | None:
     return max(releases, key=lambda release: version_key(release.parsed))
 
 
-def find_asset(release: Release, asset_name: str) -> ReleaseAsset:
-    for asset in release.assets:
-        if asset.name == asset_name:
-            return asset
-    raise RuntimeError(f"Asset '{asset_name}' not found in release {release.tag_name}")
+def find_asset(release: Release, *asset_names: str) -> ReleaseAsset:
+    for asset_name in asset_names:
+        for asset in release.assets:
+            if asset.name == asset_name:
+                return asset
+    attempted = ", ".join(repr(name) for name in asset_names)
+    raise RuntimeError(
+        f"None of the assets [{attempted}] were found in release {release.tag_name}"
+    )
+
+
+def stable_asset_names(version: str, arch: str) -> tuple[str, ...]:
+    return (
+        f"Dockmint-v{version}-macos-{arch}.zip",
+        f"Docktor-v{version}-macos-{arch}.zip",
+    )
+
+
+def beta_asset_names(version: str, arch: str) -> tuple[str, ...]:
+    return (
+        f"Dockmint-Beta-v{version}-macos-{arch}.zip",
+        f"Docktor-Beta-v{version}-macos-{arch}.zip",
+    )
 
 
 def to_rfc2822(iso_timestamp: str) -> str:
@@ -396,19 +414,15 @@ def main() -> int:
     stable_version = short_version(stable.parsed)
     beta_version = short_version(beta_track.parsed)
 
-    stable_arm_asset = find_asset(
-        stable, f"Dockmint-v{stable_version}-macos-arm64.zip"
-    )
-    stable_x64_asset = find_asset(
-        stable, f"Dockmint-v{stable_version}-macos-x64.zip"
-    )
+    stable_arm_asset = find_asset(stable, *stable_asset_names(stable_version, "arm64"))
+    stable_x64_asset = find_asset(stable, *stable_asset_names(stable_version, "x64"))
     beta_arm_asset = find_asset(
         beta_track,
-        f"Dockmint-Beta-v{beta_version}-macos-arm64.zip",
+        *beta_asset_names(beta_version, "arm64"),
     )
     beta_x64_asset = find_asset(
         beta_track,
-        f"Dockmint-Beta-v{beta_version}-macos-x64.zip",
+        *beta_asset_names(beta_version, "x64"),
     )
 
     stable_notes = extract_notes(args.changelog, stable.tag_name)

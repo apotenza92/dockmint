@@ -167,11 +167,29 @@ def version_string(parsed: ParsedTag) -> str:
     return base
 
 
-def find_asset(release: Release, name: str) -> ReleaseAsset:
-    for asset in release.assets:
-        if asset.name == name:
-            return asset
-    raise RuntimeError(f"Asset '{name}' not found in release {release.tag_name}")
+def find_asset(release: Release, *names: str) -> ReleaseAsset:
+    for name in names:
+        for asset in release.assets:
+            if asset.name == name:
+                return asset
+    attempted = ", ".join(repr(name) for name in names)
+    raise RuntimeError(
+        f"None of the assets [{attempted}] were found in release {release.tag_name}"
+    )
+
+
+def stable_asset_names(version: str, arch: str) -> tuple[str, ...]:
+    return (
+        f"Dockmint-v{version}-macos-{arch}.zip",
+        f"Docktor-v{version}-macos-{arch}.zip",
+    )
+
+
+def beta_asset_names(version: str, arch: str) -> tuple[str, ...]:
+    return (
+        f"Dockmint-Beta-v{version}-macos-{arch}.zip",
+        f"Docktor-Beta-v{version}-macos-{arch}.zip",
+    )
 
 
 def sha256_for_asset(
@@ -369,10 +387,10 @@ def main() -> int:
     stable_changed = False
     if stable is not None:
         stable_version = version_string(stable.parsed)
-        stable_arm_name = f"Dockmint-v{stable_version}-macos-arm64.zip"
-        stable_intel_name = f"Dockmint-v{stable_version}-macos-x64.zip"
-        stable_arm_asset = find_asset(stable, stable_arm_name)
-        stable_intel_asset = find_asset(stable, stable_intel_name)
+        stable_arm_asset = find_asset(stable, *stable_asset_names(stable_version, "arm64"))
+        stable_intel_asset = find_asset(
+            stable, *stable_asset_names(stable_version, "x64")
+        )
         stable_arm_sha = sha256_for_asset(
             stable_arm_asset, github_token=args.github_token, cache=sha_cache
         )
@@ -418,10 +436,8 @@ def main() -> int:
         print("Stable cask unchanged (no stable releases yet)")
 
     beta_version = version_string(beta_track.parsed)
-    beta_arm_name = f"Dockmint-Beta-v{beta_version}-macos-arm64.zip"
-    beta_intel_name = f"Dockmint-Beta-v{beta_version}-macos-x64.zip"
-    beta_arm_asset = find_asset(beta_track, beta_arm_name)
-    beta_intel_asset = find_asset(beta_track, beta_intel_name)
+    beta_arm_asset = find_asset(beta_track, *beta_asset_names(beta_version, "arm64"))
+    beta_intel_asset = find_asset(beta_track, *beta_asset_names(beta_version, "x64"))
     beta_arm_sha = sha256_for_asset(
         beta_arm_asset, github_token=args.github_token, cache=sha_cache
     )
