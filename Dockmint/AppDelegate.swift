@@ -20,6 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
+    private static var shouldAlwaysShowSettingsOnLaunchForLocalDebugBuild: Bool {
+        #if DEBUG
+        return !AppIdentity.boolFlag(primary: "DOCKMINT_TEST_SUITE", legacy: "DOCKTOR_TEST_SUITE")
+        #else
+        return false
+        #endif
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         migrateInstalledAppBundleNameIfNeeded()
@@ -45,12 +53,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateManager.configureForLaunch(isAutomatedMode: false)
 
         let isFirstLaunch = !preferences.firstLaunchCompleted
-        let shouldShowWindow = explicitSettingsRequest || isFirstLaunch || preferences.showOnStartup
+        let shouldShowWindow = explicitSettingsRequest
+            || isFirstLaunch
+            || preferences.showOnStartup
+            || Self.shouldAlwaysShowSettingsOnLaunchForLocalDebugBuild
         if launchRequestsSettings {
             Logger.log("Launch argument requested settings window")
         }
         if launchedFromFinder {
             Logger.log("Finder launch detected")
+        }
+        if Self.shouldAlwaysShowSettingsOnLaunchForLocalDebugBuild {
+            Logger.log("Local Debug build detected; opening settings window on launch")
         }
 
         DispatchQueue.main.async {

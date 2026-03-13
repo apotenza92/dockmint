@@ -78,12 +78,8 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 
     var windowFrameSize: NSSize {
         switch self {
-        case .general:
-            return NSSize(width: 873, height: 860)
-        case .appActions:
-            return NSSize(width: 856, height: 422)
-        case .folderActions:
-            return NSSize(width: 873, height: 700)
+        case .general, .appActions, .folderActions:
+            return NSSize(width: 873, height: 560)
         }
     }
 }
@@ -303,7 +299,7 @@ struct PreferencesView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     paneSectionHeader(
                         title: "App Actions",
-                        description: "First click controls what happens when the app is not active yet.\nDouble click applies after the app is already active.",
+                        description: "Choose what happens when you click or scroll on app icons in the Dock.",
                         buttonTitle: "Reset App Actions",
                         action: preferences.resetAppActionsToDefaults
                     )
@@ -316,7 +312,7 @@ struct PreferencesView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     paneSectionHeader(
                         title: "Folder Actions",
-                        description: "Choose what happens when you click or scroll on folder stacks in the Dock. System leaves Finder in charge of remembered window, view, group, and sort state; choosing explicit Finder options makes Dockmint override them.",
+                        description: "Choose what happens when you click or scroll on folder stacks in the Dock.",
                         buttonTitle: "Reset Folder Actions",
                         action: preferences.resetFolderActionsToDefaults
                     )
@@ -443,7 +439,7 @@ struct PreferencesView: View {
         VStack(alignment: .leading, spacing: 0) {
             paneSectionHeader(
                 title: "App Actions",
-                description: "First click controls what happens when the app is not active yet.\nDouble click applies after the app is already active.",
+                description: "Choose what happens when you click or scroll on app icons in the Dock.",
                 buttonTitle: "Reset App Actions",
                 action: preferences.resetAppActionsToDefaults
             )

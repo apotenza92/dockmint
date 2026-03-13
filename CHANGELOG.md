@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.2.6]
+
+- Made Dock icon double-click actions run only on a real macOS double click, so single clicks on an already-frontmost app no longer trigger the mapped double-click action.
+- Updated the shipped defaults so first click uses `App Exposé (>1 window only)` while double click opens `App Exposé`, removed the default no-modifier app and folder scroll actions, made Option-click on folders open Finder with `System` view, and refreshed the README, website, and Settings copy to match.
+- Shortened the Settings window default size, kept vertical resizing enabled with fixed width, made local Debug builds open Settings automatically on launch, and targeted the built app directly in local settings URL checks so installed Dockmint-family apps are not pulled into dev workflows.
+
 ## [v0.2.5]
 
 - Fixed the folder-click regression where Dockmint could move the mouse cursor or feel stuck while handling Dock folder clicks.

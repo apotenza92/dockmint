@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
+final class SettingsWindowController: NSWindowController, NSToolbarDelegate, NSWindowDelegate {
     private static let animationsDisabled: Bool = {
         AppIdentity.boolFlag(
             primary: "DOCKMINT_DISABLE_SETTINGS_ANIMATION",
@@ -11,6 +11,8 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
     }()
     private let defaults = UserDefaults.standard
     private let frameDefaultsKey = "settingsWindowFrame"
+    private let frameDefaultsVersionKey = "settingsWindowFrameVersion"
+    private let currentFrameDefaultsVersion = 2
     private let primaryInitialFocusControlTitle = "Show menu bar icon"
     private let fallbackInitialFocusControlTitle = "Check for Updates"
     private let folderOpenWithOptionsStore: FolderOpenWithOptionsStore
@@ -30,7 +32,7 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
         self.hostingController = hostingController
         let window = NSWindow(contentViewController: hostingController)
 
-        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.title = AppServices.settingsWindowTitle
         window.isReleasedWhenClosed = false
         window.level = .normal
@@ -38,6 +40,7 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
         window.setFrame(NSRect(origin: .zero, size: viewModel.selectedPane.windowFrameSize), display: false)
 
         super.init(window: window)
+        window.delegate = self
 
         hostingController.rootView = Self.makePreferencesView(
             services: services,
@@ -142,20 +145,39 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
 
         let frameSize = pane.windowFrameSize
         let currentFrame = window.frame
+        let minHeight = minimumWindowHeight
+        let maxHeight = maximumWindowHeight(for: window, frameSize: frameSize)
+        let targetHeight = min(max(currentFrame.height, minHeight), maxHeight)
         let newFrame = NSRect(
             x: currentFrame.minX,
-            y: currentFrame.maxY - frameSize.height,
+            y: currentFrame.maxY - targetHeight,
             width: frameSize.width,
-            height: frameSize.height
+            height: targetHeight
         )
 
-        window.minSize = frameSize
-        window.maxSize = frameSize
+        let minWindowSize = NSSize(width: frameSize.width, height: minHeight)
+        let maxWindowSize = NSSize(width: frameSize.width, height: maxHeight)
+        let minContentSize = window.contentRect(forFrameRect: NSRect(origin: .zero, size: minWindowSize)).size
+        let maxContentSize = window.contentRect(forFrameRect: NSRect(origin: .zero, size: maxWindowSize)).size
+
+        window.minSize = minWindowSize
+        window.maxSize = maxWindowSize
+        window.contentMinSize = minContentSize
+        window.contentMaxSize = maxContentSize
         window.setFrame(newFrame, display: true, animate: animated && !Self.animationsDisabled)
+    }
+
+    private var minimumWindowHeight: CGFloat { 380 }
+
+    private func maximumWindowHeight(for window: NSWindow, frameSize: NSSize) -> CGFloat {
+        max(window.screen?.visibleFrame.height ?? 0,
+            targetScreen()?.visibleFrame.height ?? 0,
+            frameSize.height)
     }
 
     private func saveFrame(from window: NSWindow) {
         defaults.set(NSStringFromRect(window.frame), forKey: frameDefaultsKey)
+        defaults.set(currentFrameDefaultsVersion, forKey: frameDefaultsVersionKey)
     }
 
     private func restoreFrame(for window: NSWindow) -> Bool {
@@ -166,7 +188,14 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
         guard frame.width > 0, frame.height > 0, frameIsVisible(frame) else {
             return false
         }
-        frame.size = viewModel.selectedPane.windowFrameSize
+        let defaultSize = viewModel.selectedPane.windowFrameSize
+        let storedVersion = defaults.integer(forKey: frameDefaultsVersionKey)
+        frame.size.width = defaultSize.width
+        if storedVersion < currentFrameDefaultsVersion {
+            frame.size.height = defaultSize.height
+        } else {
+            frame.size.height = max(frame.size.height, minimumWindowHeight)
+        }
         window.setFrame(frame, display: false)
         return true
     }
@@ -196,6 +225,12 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
             return hoveredScreen
         }
         return NSScreen.main ?? NSScreen.screens.first
+    }
+
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        let minHeight = minimumWindowHeight
+        let maxHeight = maximumWindowHeight(for: sender, frameSize: viewModel.selectedPane.windowFrameSize)
+        return NSSize(width: frameSize.width, height: min(max(frameSize.height, minHeight), maxHeight))
     }
 
     private func applyInitialKeyboardSelection() {

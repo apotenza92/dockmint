@@ -650,7 +650,7 @@ final class Preferences: ObservableObject {
     private static let showMenuBarIconPreferenceKey = PreferenceKey<Bool>(name: "showMenuBarIcon", defaultValue: true)
     private static let firstLaunchCompletedPreferenceKey = PreferenceKey<Bool>(name: "firstLaunchCompleted", defaultValue: false)
     private static let updateCheckFrequencyPreferenceKey = PreferenceKey<UpdateCheckFrequency>(name: "updateCheckFrequency", defaultValue: .weekly)
-    private static let firstClickBehaviorPreferenceKey = PreferenceKey<FirstClickBehavior>(name: "firstClickBehavior", defaultValue: .activateApp)
+    private static let firstClickBehaviorPreferenceKey = PreferenceKey<FirstClickBehavior>(name: "firstClickBehavior", defaultValue: .appExpose)
     private static let lastUpdateCheckTimestampPreferenceKey = PreferenceKey<Double>(name: "lastUpdateCheckTimestamp", defaultValue: 0)
 
     // Prevent feedback loop when we adjust login item after a failed toggle.
@@ -686,7 +686,7 @@ final class Preferences: ObservableObject {
 
     /// Per-slot ">1 window" gate for modifier rows and scroll rows.
     /// Keys follow the pattern "<source>_<modifier>", e.g. "firstClick_shift", "scrollUp_none".
-    /// The no-modifier first-click and active-app-click slots are stored in their own legacy keys above.
+    /// The no-modifier first-click and double-click slots are stored in their own legacy keys above.
     @Published var appExposeRequiresMultipleWindowsMap: [String: Bool] {
         didSet {
             userDefaults.set(appExposeRequiresMultipleWindowsMap, forKey: appExposeRequiresMultipleWindowsMapKey)
@@ -937,7 +937,7 @@ final class Preferences: ObservableObject {
            let scrollUp = DockAction(rawValue: scrollUpRaw) {
             scrollUpAction = scrollUp
         } else {
-            scrollUpAction = .hideOthers
+            scrollUpAction = .none
         }
 
         var scrollDownAction: DockAction
@@ -945,7 +945,7 @@ final class Preferences: ObservableObject {
            let scrollDown = DockAction(rawValue: scrollDownRaw) {
             scrollDownAction = scrollDown
         } else {
-            scrollDownAction = .hideApp
+            scrollDownAction = .none
         }
 
         // One-time migration to move older defaults to current defaults.
@@ -1005,23 +1005,18 @@ final class Preferences: ObservableObject {
         var shiftOptionScrollDownAction = Self.loadAction(from: userDefaults, forKey: shiftOptionScrollDownActionKey) ?? .none
         let folderClickAction = Self.loadFolderAction(from: userDefaults, forKey: folderClickActionKey) ?? Self.defaultFolderClickAction
         let shiftFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderClickActionKey) ?? .none
-        let optionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderClickActionKey) ?? .none
-        let shiftOptionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderClickActionKey) ?? .none
-        let folderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: folderScrollUpActionKey) ?? DockFolderAction(
-            openInApplicationIdentifier: "com.apple.Terminal",
-            view: .automatic,
-            sortBy: .none,
-            groupBy: .none
-        )
-        let shiftFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderScrollUpActionKey) ?? .none
-        let optionFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderScrollUpActionKey) ?? .none
-        let shiftOptionFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderScrollUpActionKey) ?? .none
-        let folderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: folderScrollDownActionKey) ?? DockFolderAction(
+        let optionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderClickActionKey) ?? DockFolderAction(
             openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
             view: .automatic,
             sortBy: .none,
             groupBy: .none
         )
+        let shiftOptionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderClickActionKey) ?? .none
+        let folderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: folderScrollUpActionKey) ?? .none
+        let shiftFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderScrollUpActionKey) ?? .none
+        let optionFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderScrollUpActionKey) ?? .none
+        let shiftOptionFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderScrollUpActionKey) ?? .none
+        let folderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: folderScrollDownActionKey) ?? .none
         let shiftFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderScrollDownActionKey) ?? .none
         let optionFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderScrollDownActionKey) ?? .none
         let shiftOptionFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderScrollDownActionKey) ?? .none
@@ -1310,7 +1305,7 @@ final class Preferences: ObservableObject {
 
     func resetAppActionsToDefaults() {
         clickAction = .appExpose
-        firstClickBehavior = .activateApp
+        firstClickBehavior = .appExpose
         firstClickAppExposeRequiresMultipleWindows = true
         clickAppExposeRequiresMultipleWindows = false
         appExposeRequiresMultipleWindowsMap = [:]
@@ -1323,12 +1318,12 @@ final class Preferences: ObservableObject {
         optionClickAction = .none
         shiftOptionClickAction = .none
 
-        scrollUpAction = .hideOthers
+        scrollUpAction = .none
         shiftScrollUpAction = .none
         optionScrollUpAction = .none
         shiftOptionScrollUpAction = .none
 
-        scrollDownAction = .hideApp
+        scrollDownAction = .none
         shiftScrollDownAction = .none
         optionScrollDownAction = .none
         shiftOptionScrollDownAction = .none
@@ -1337,25 +1332,20 @@ final class Preferences: ObservableObject {
     func resetFolderActionsToDefaults() {
         folderClickAction = Self.defaultFolderClickAction
         shiftFolderClickAction = .none
-        optionFolderClickAction = .none
-        shiftOptionFolderClickAction = .none
-
-        folderScrollUpAction = DockFolderAction(
-            openInApplicationIdentifier: "com.apple.Terminal",
-            view: .automatic,
-            sortBy: .none,
-            groupBy: .none
-        )
-        shiftFolderScrollUpAction = .none
-        optionFolderScrollUpAction = .none
-        shiftOptionFolderScrollUpAction = .none
-
-        folderScrollDownAction = DockFolderAction(
+        optionFolderClickAction = DockFolderAction(
             openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
             view: .automatic,
             sortBy: .none,
             groupBy: .none
         )
+        shiftOptionFolderClickAction = .none
+
+        folderScrollUpAction = .none
+        shiftFolderScrollUpAction = .none
+        optionFolderScrollUpAction = .none
+        shiftOptionFolderScrollUpAction = .none
+
+        folderScrollDownAction = .none
         shiftFolderScrollDownAction = .none
         optionFolderScrollDownAction = .none
         shiftOptionFolderScrollDownAction = .none

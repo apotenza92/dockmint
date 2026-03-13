@@ -88,6 +88,7 @@ final class DockExposeCoordinator: ObservableObject {
         let mouseDownUptime: TimeInterval
         let location: CGPoint
         let buttonNumber: Int
+        let clickCount: Int
         let flags: CGEventFlags
         let frontmostBefore: String?
         let clickedBundle: String
@@ -174,8 +175,8 @@ final class DockExposeCoordinator: ObservableObject {
         }
         lastStartError = nil
         isRunning = eventTap.start(
-            clickHandler: { [weak self] point, button, flags, phase in
-                return self?.handleClick(at: point, buttonNumber: button, flags: flags, phase: phase) ?? false
+            clickHandler: { [weak self] point, button, clickCount, flags, phase in
+                return self?.handleClick(at: point, buttonNumber: button, clickCount: clickCount, flags: flags, phase: phase) ?? false
             },
             scrollHandler: { [weak self] point, direction, flags in
                 return self?.handleScroll(at: point, direction: direction, flags: flags) ?? false
@@ -459,7 +460,7 @@ final class DockExposeCoordinator: ObservableObject {
         }
     }
 
-    private func handleClick(at location: CGPoint, buttonNumber: Int, flags: CGEventFlags, phase: ClickPhase) -> Bool {
+    private func handleClick(at location: CGPoint, buttonNumber: Int, clickCount: Int, flags: CGEventFlags, phase: ClickPhase) -> Bool {
         guard buttonNumber == 0 else {
             if phase == .up {
                 pendingClickContext = nil
@@ -472,7 +473,7 @@ final class DockExposeCoordinator: ObservableObject {
 
         switch phase {
         case .down:
-            Logger.debug("WORKFLOW: Click down at \(location.x), \(location.y) button \(buttonNumber)")
+            Logger.debug("WORKFLOW: Click down at \(location.x), \(location.y) button \(buttonNumber) clickCount=\(clickCount)")
             let folderURLAtMouseDown = folderURLNearPoint(location)
             Logger.debug("WORKFLOW: Folder hit test on mouse-down result=\(folderURLAtMouseDown?.path ?? "nil") point=(\(Int(location.x)),\(Int(location.y)))")
             if let folderURL = folderURLAtMouseDown {
@@ -579,6 +580,7 @@ final class DockExposeCoordinator: ObservableObject {
                                               mouseDownUptime: nowUptime,
                                               location: location,
                                               buttonNumber: buttonNumber,
+                                              clickCount: clickCount,
                                               flags: flags,
                                               frontmostBefore: frontmostBefore,
                                               clickedBundle: clickedBundle,
@@ -593,6 +595,7 @@ final class DockExposeCoordinator: ObservableObject {
                                                      mouseDownUptime: context.mouseDownUptime,
                                                      location: context.location,
                                                      buttonNumber: context.buttonNumber,
+                                                     clickCount: context.clickCount,
                                                      flags: context.flags,
                                                      frontmostBefore: context.frontmostBefore,
                                                      clickedBundle: context.clickedBundle,
@@ -606,7 +609,7 @@ final class DockExposeCoordinator: ObservableObject {
                 schedulePendingDockClickWatchdog(context: pendingClickContext!,
                                                  watchdogToken: pendingDockClickWatchdogTokenCounter)
             }
-            Logger.debug("APP_EXPOSE_TRACE: click=\(clickSequence) phase=down bundle=\(clickedBundle) frontmostBefore=\(frontmostBefore ?? "nil") windowsAtDown=nil modifier=\(modifierCombination(from: flags).rawValue) firstClickBehavior=\(preferences.firstClickBehavior.rawValue) consumePlanned=\(consumeClick) fallbackLatched=\(forceFirstClickActivateFallback)")
+            Logger.debug("APP_EXPOSE_TRACE: click=\(clickSequence) phase=down bundle=\(clickedBundle) clickCount=\(clickCount) frontmostBefore=\(frontmostBefore ?? "nil") windowsAtDown=nil modifier=\(modifierCombination(from: flags).rawValue) firstClickBehavior=\(preferences.firstClickBehavior.rawValue) consumePlanned=\(consumeClick) fallbackLatched=\(forceFirstClickActivateFallback)")
             pendingClickWasDragged = false
             let consumeMouseDown = shouldConsumeMouseDown(for: pendingClickContext!)
             if consumeMouseDown {
@@ -659,6 +662,7 @@ final class DockExposeCoordinator: ObservableObject {
                                                               mouseDownUptime: ProcessInfo.processInfo.systemUptime,
                                                               location: location,
                                                               buttonNumber: buttonNumber,
+                                                              clickCount: clickCount,
                                                               flags: flags,
                                                               frontmostBefore: FrontmostAppTracker.frontmostBundleIdentifier(),
                                                               clickedBundle: recoveredBundle,
@@ -693,6 +697,7 @@ final class DockExposeCoordinator: ObservableObject {
                                                        mouseDownUptime: context.mouseDownUptime,
                                                        location: context.location,
                                                        buttonNumber: context.buttonNumber,
+                                                       clickCount: context.clickCount,
                                                        flags: context.flags,
                                                        frontmostBefore: context.frontmostBefore,
                                                        clickedBundle: resolvedBundleAtMouseUp,
@@ -705,7 +710,7 @@ final class DockExposeCoordinator: ObservableObject {
                 effectiveContext = context
             }
 
-            Logger.debug("APP_EXPOSE_TRACE: click=\(effectiveContext.clickSequence) phase=up bundle=\(effectiveContext.clickedBundle) frontmostBefore=\(effectiveContext.frontmostBefore ?? "nil") windowsAtDown=\(effectiveContext.windowCountAtMouseDown.map(String.init) ?? "nil") consumePlanned=\(effectiveContext.consumeClick) fallbackLatched=\(effectiveContext.forceFirstClickActivateFallback)")
+            Logger.debug("APP_EXPOSE_TRACE: click=\(effectiveContext.clickSequence) phase=up bundle=\(effectiveContext.clickedBundle) clickCount=\(effectiveContext.clickCount) frontmostBefore=\(effectiveContext.frontmostBefore ?? "nil") windowsAtDown=\(effectiveContext.windowCountAtMouseDown.map(String.init) ?? "nil") consumePlanned=\(effectiveContext.consumeClick) fallbackLatched=\(effectiveContext.forceFirstClickActivateFallback)")
             let consumeNow = executeClickAction(effectiveContext)
             if consumeNow != context.consumeClick {
                 Logger.debug("WORKFLOW: Click consume mismatch click=\(context.clickSequence) planned=\(context.consumeClick) actual=\(consumeNow)")
@@ -862,13 +867,14 @@ final class DockExposeCoordinator: ObservableObject {
             $0.bundleIdentifier == clickedBundle && $0.isActive
         }
 
-        Logger.debug("WORKFLOW: click=\(context.clickSequence) frontmost=\(frontmostBefore ?? "nil"), clicked=\(clickedBundle), clickedIsActive=\(clickedAppIsActive), windowsDown=\(context.windowCountAtMouseDown.map(String.init) ?? "nil"), fallbackLatched=\(context.forceFirstClickActivateFallback), lastTriggered=\(lastTriggeredBundle ?? "nil"), currentExpose=\(currentExposeApp ?? "nil")")
+        Logger.debug("WORKFLOW: click=\(context.clickSequence) clickCount=\(context.clickCount) frontmost=\(frontmostBefore ?? "nil"), clicked=\(clickedBundle), clickedIsActive=\(clickedAppIsActive), windowsDown=\(context.windowCountAtMouseDown.map(String.init) ?? "nil"), fallbackLatched=\(context.forceFirstClickActivateFallback), lastTriggered=\(lastTriggeredBundle ?? "nil"), currentExpose=\(currentExposeApp ?? "nil")")
 
         if let promotedAction = rapidSecondClickPromotionAction(bundleIdentifier: clickedBundle,
+                                                                clickCount: context.clickCount,
                                                                 flags: flags,
                                                                 frontmostBefore: frontmostBefore,
                                                                 windowCountHint: context.windowCountAtMouseDown) {
-            Logger.debug("WORKFLOW: promoting rapid second click to active-click action \(promotedAction.rawValue) for \(clickedBundle)")
+            Logger.debug("WORKFLOW: promoting rapid second click to double-click action \(promotedAction.rawValue) for \(clickedBundle)")
             recordActionExecution(action: promotedAction,
                                   bundle: clickedBundle,
                                   source: "rapidSecondClickPromote")
@@ -893,6 +899,11 @@ final class DockExposeCoordinator: ObservableObject {
 
         if appExposeActive {
             if currentExposeApp == clickedBundle {
+                if context.clickCount >= 2,
+                   configuredAction(for: .click, flags: flags) == .appExpose {
+                    Logger.debug("WORKFLOW: Ignoring same-app double click while App Exposé is already active for \(clickedBundle)")
+                    return false
+                }
                 // Guard against ultra-fast follow-up clicks immediately after opening App Exposé.
                 // Without a tiny grace window, an accidental rapid double-click can instantly dismiss it.
                 if isRecentExposeInteraction(maxAge: appExposeDismissGraceWindow) {
@@ -902,7 +913,7 @@ final class DockExposeCoordinator: ObservableObject {
 
                 // User clicked the same app whose windows are in App Exposé – the Dock should dismiss
                 // App Exposé and focus the app. Reset tracking now so the next click is handled as a
-                // regular active-app click, and assert activation in case Dock focus handoff races.
+                // regular Dock click again, and assert activation in case Dock focus handoff races.
                 Logger.debug("WORKFLOW: App Exposé active - user clicked current app icon; resetting tracking")
                 resetExposeTracking()
                 scheduleDockActivationAssertionIfNeeded(for: clickedBundle,
@@ -1030,12 +1041,17 @@ final class DockExposeCoordinator: ObservableObject {
                                            forceActivateFallback: context.forceFirstClickActivateFallback)
         }
 
+        guard context.clickCount >= 2 else {
+            Logger.debug("WORKFLOW: Passing through single click on already-active app for \(clickedBundle)")
+            return false
+        }
+
         let action = configuredAction(for: .click, flags: flags)
         lastActionExecuted = action
         lastActionExecutedBundle = clickedBundle
         lastActionExecutedSource = "click"
         lastActionExecutedAt = Date()
-        Logger.log("WORKFLOW: Executing click action (button \(buttonNumber)) at \(location.x), \(location.y): \(action.rawValue) for \(clickedBundle) (modifiers=\(modifierCombination(from: flags).rawValue), flags=\(flags.rawValue))")
+        Logger.log("WORKFLOW: Executing double-click action (button \(buttonNumber)) at \(location.x), \(location.y): \(action.rawValue) for \(clickedBundle) (modifiers=\(modifierCombination(from: flags).rawValue), flags=\(flags.rawValue), clickCount=\(context.clickCount))")
 
         switch action {
         case .none:
@@ -1847,6 +1863,7 @@ final class DockExposeCoordinator: ObservableObject {
         }
 
         if let promotedAction = rapidSecondClickPromotionAction(bundleIdentifier: clickedBundle,
+                                                                clickCount: context.clickCount,
                                                                 flags: flags,
                                                                 frontmostBefore: frontmostBefore,
                                                                 windowCountHint: context.windowCountAtMouseDown) {
@@ -1875,6 +1892,7 @@ final class DockExposeCoordinator: ObservableObject {
             if frontmostBefore != clickedBundle {
                 return false
             }
+            guard context.clickCount >= 2 else { return false }
             let action = configuredAction(for: .click, flags: flags)
             if action == .appExpose {
                 return shouldConsumeActiveClickAppExpose(for: clickedBundle,
@@ -1892,6 +1910,8 @@ final class DockExposeCoordinator: ObservableObject {
                                                            frontmostBefore: frontmostBefore) {
             return shouldConsumeFirstClickAction(for: clickedBundle, flags: flags)
         }
+
+        guard context.clickCount >= 2 else { return false }
 
         let action = configuredAction(for: .click, flags: flags)
         if action == .appExpose {
@@ -2036,9 +2056,11 @@ final class DockExposeCoordinator: ObservableObject {
     }
 
     private func rapidSecondClickPromotionAction(bundleIdentifier: String,
+                                                 clickCount: Int,
                                                  flags: CGEventFlags,
                                                  frontmostBefore: String?,
                                                  windowCountHint: Int?) -> DockAction? {
+        guard clickCount >= 2 else { return nil }
         guard modifierCombination(from: flags) == .none else { return nil }
         guard frontmostBefore != bundleIdentifier else { return nil }
         guard preferences.firstClickBehavior == .activateApp else { return nil }
@@ -2073,7 +2095,7 @@ final class DockExposeCoordinator: ObservableObject {
             guard let self else { return }
 
             if action == .hideApp {
-                Logger.debug("WORKFLOW: Deferred rapid active-click action source=\(source) action=\(action.rawValue) target=\(bundleIdentifier) without frontmost wait")
+                Logger.debug("WORKFLOW: Deferred rapid double-click action source=\(source) action=\(action.rawValue) target=\(bundleIdentifier) without frontmost wait")
                 self.executeDeferredRapidSecondClickAction(action: action,
                                                            bundleIdentifier: bundleIdentifier,
                                                            frontmostBefore: frontmostBefore)
@@ -2083,11 +2105,11 @@ final class DockExposeCoordinator: ObservableObject {
             let frontmost = FrontmostAppTracker.frontmostBundleIdentifier()
             if frontmost != bundleIdentifier {
                 guard remainingAttempts > 0 else {
-                    Logger.debug("WORKFLOW: Deferred rapid active-click action abandoned source=\(source) action=\(action.rawValue) target=\(bundleIdentifier) frontmost=\(frontmost ?? "nil")")
+                    Logger.debug("WORKFLOW: Deferred rapid double-click action abandoned source=\(source) action=\(action.rawValue) target=\(bundleIdentifier) frontmost=\(frontmost ?? "nil")")
                     return
                 }
 
-                Logger.debug("WORKFLOW: Waiting for deferred rapid active-click action source=\(source) action=\(action.rawValue) target=\(bundleIdentifier) frontmost=\(frontmost ?? "nil") remainingAttempts=\(remainingAttempts)")
+                Logger.debug("WORKFLOW: Waiting for deferred rapid double-click action source=\(source) action=\(action.rawValue) target=\(bundleIdentifier) frontmost=\(frontmost ?? "nil") remainingAttempts=\(remainingAttempts)")
                 self.scheduleDeferredRapidSecondClickAction(for: bundleIdentifier,
                                                             action: action,
                                                             frontmostBefore: frontmostBefore,
@@ -2096,7 +2118,7 @@ final class DockExposeCoordinator: ObservableObject {
                 return
             }
 
-            Logger.debug("WORKFLOW: Deferred rapid active-click action source=\(source) action=\(action.rawValue) target=\(bundleIdentifier)")
+            Logger.debug("WORKFLOW: Deferred rapid double-click action source=\(source) action=\(action.rawValue) target=\(bundleIdentifier)")
             self.executeDeferredRapidSecondClickAction(action: action,
                                                        bundleIdentifier: bundleIdentifier,
                                                        frontmostBefore: frontmostBefore)
@@ -2203,8 +2225,8 @@ final class DockExposeCoordinator: ObservableObject {
         guard preferences.clickAction == .appExpose else { return false }
         guard !isRecentFirstClickActivatePassThrough(for: context.clickedBundle) else { return false }
         // This watchdog is only needed during first-click activation transitions.
-        // When the clicked app is already frontmost, waiting for the real mouse-up
-        // is required for active-app App Exposé trigger timing.
+        // When the clicked app is already frontmost, the mapped action should wait
+        // for a real macOS-timed double click instead of firing on a single click.
         guard context.frontmostBefore != context.clickedBundle else { return false }
         return true
     }

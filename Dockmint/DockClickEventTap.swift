@@ -18,7 +18,7 @@ final class DockClickEventTap {
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var clickHandler: ((CGPoint, Int, CGEventFlags, ClickPhase) -> Bool)? // Returns true if event should be consumed
+    private var clickHandler: ((CGPoint, Int, Int, CGEventFlags, ClickPhase) -> Bool)? // Returns true if event should be consumed
     private var scrollHandler: ((CGPoint, ScrollDirection, CGEventFlags) -> Bool)? // Returns true if event should be consumed
     private var anyEventHandler: ((CGEventType) -> Void)?
     private var syntheticReleaseHandler: (() -> Void)?
@@ -43,7 +43,7 @@ final class DockClickEventTap {
     private let remapperCheckInterval: TimeInterval = 1.0
 
     func start(
-        clickHandler: @escaping (CGPoint, Int, CGEventFlags, ClickPhase) -> Bool,
+        clickHandler: @escaping (CGPoint, Int, Int, CGEventFlags, ClickPhase) -> Bool,
         scrollHandler: @escaping (CGPoint, ScrollDirection, CGEventFlags) -> Bool,
         anyEventHandler: ((CGEventType) -> Void)? = nil,
         syntheticReleaseHandler: (() -> Void)? = nil,
@@ -218,6 +218,7 @@ final class DockClickEventTap {
 
         let location = event.location
         let buttonNumber = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+        let clickCount = Int(event.getIntegerValueField(.mouseEventClickState))
         let currentFlags = event.flags
 
         switch phase {
@@ -253,8 +254,8 @@ final class DockClickEventTap {
             leftMouseDownFlags = currentFlags
             leftMouseDownUptime = nowUptime
             leftMouseDragExceededThreshold = false
-            Logger.debug("DockClickEventTap: Raw click down at \(location.x), \(location.y) (button: \(buttonNumber))")
-            let shouldConsume = clickHandler?(location, buttonNumber, currentFlags, .down) ?? false
+            Logger.debug("DockClickEventTap: Raw click down at \(location.x), \(location.y) (button: \(buttonNumber), clickCount: \(clickCount))")
+            let shouldConsume = clickHandler?(location, buttonNumber, clickCount, currentFlags, .down) ?? false
             Logger.debug("DockClickEventTap: Click down consume=\(shouldConsume)")
             return shouldConsume
 
@@ -267,7 +268,7 @@ final class DockClickEventTap {
                     let downButton = leftMouseDownButton ?? buttonNumber
                     let downFlags = leftMouseDownFlags ?? currentFlags
                     Logger.debug("DockClickEventTap: Drag threshold exceeded (distance=\(hypot(dx, dy)))")
-                    _ = clickHandler?(location, downButton, downFlags, .dragged)
+                    _ = clickHandler?(location, downButton, clickCount, downFlags, .dragged)
                 }
             }
             return false
@@ -276,8 +277,8 @@ final class DockClickEventTap {
             let downButton = leftMouseDownButton ?? buttonNumber
             let downFlags = leftMouseDownFlags ?? currentFlags
             let dragged = leftMouseDragExceededThreshold
-            Logger.debug("DockClickEventTap: Raw click up at \(location.x), \(location.y) (button: \(downButton), dragged: \(dragged))")
-            let shouldConsume = clickHandler?(location, downButton, downFlags, .up) ?? false
+            Logger.debug("DockClickEventTap: Raw click up at \(location.x), \(location.y) (button: \(downButton), clickCount: \(clickCount), dragged: \(dragged))")
+            let shouldConsume = clickHandler?(location, downButton, clickCount, downFlags, .up) ?? false
             leftMouseDownPoint = nil
             leftMouseDownButton = nil
             leftMouseDownFlags = nil

@@ -11,7 +11,7 @@ Dockmint is a free open source macOS app to customize Dock icon click, double-cl
 
 Actions include: App Exposé (show all windows for that app), Bring All to Front, Hide App, Hide Others, Minimize All, Quit App, Activate App, and Single App Mode.
 
-Dockmint ships with double click mapped to App Exposé, so double clicking a Dock icon shows all open windows for that app.
+By default, first click uses App Exposé only when an app has more than one window, and double click opens App Exposé.
 
 Kind of [DockDoor](https://dockdoor.net/) 'Lite' using only macOS' built in features.
 
