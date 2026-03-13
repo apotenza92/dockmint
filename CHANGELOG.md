@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file (stable and beta
 ## [Unreleased]
 
 - Ongoing development.
+
+## [v0.2.4]
+
+- Changed the default plain Dock folder-stack click action to Finder passthrough (`Open With = Finder`, `View = Finder Default`) so fresh installs and Reset Folder Actions preserve Finder’s own remembered window, view, group, and sort state.
+- Added a one-time migration that rewrites only the exact legacy plain-click default (`Dock` + automatic view, no group/sort overrides) to the new Finder passthrough default, leaving intentional custom folder actions untouched.
+- Clarified Folder Actions settings copy so Finder Default is explicitly presented as Finder-managed behavior, while explicit Finder view/group/sort selections remain available as Dockmint-controlled overrides.
+- Added folder-action decision coverage and extra debug diagnostics around folder-click hit detection, pending-state lifecycle, neutral mouse-up recovery, and executor route selection.
+- Hardened Finder-default folder clicks so delayed synthetic release events no longer wipe newer in-flight clicks, missed folder mouse-ups can be recovered by a watchdog, plain Finder-default clicks now reuse an already-open Finder window for that folder instead of reopening it, and fresh-open stress testing now passes reliably.
 - Added a documented multi-release Docktor -> Dockmint rollout runbook plus release-time validation for migration phase, legacy appcast mirroring, and canonical `apotenza92/dockmint` release origin checks.
 
 ## [v0.2.3]

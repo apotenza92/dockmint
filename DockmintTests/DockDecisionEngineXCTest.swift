@@ -196,6 +196,29 @@ final class DockDecisionEngineXCTest: XCTestCase {
         )
     }
 
+    func testFolderMouseUpConsumptionSemantics() {
+        XCTAssertFalse(
+            DockDecisionEngine.shouldConsumeFolderMouseUp(
+                isConfigured: false,
+                opensInDock: false
+            )
+        )
+
+        XCTAssertFalse(
+            DockDecisionEngine.shouldConsumeFolderMouseUp(
+                isConfigured: true,
+                opensInDock: true
+            )
+        )
+
+        XCTAssertTrue(
+            DockDecisionEngine.shouldConsumeFolderMouseUp(
+                isConfigured: true,
+                opensInDock: false
+            )
+        )
+    }
+
     func testEffectiveScrollDeltaCanFlipDiscreteDirectionOnly() {
         XCTAssertEqual(
             DockDecisionEngine.effectiveScrollDelta(

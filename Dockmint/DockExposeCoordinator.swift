@@ -31,9 +31,11 @@ final class DockExposeCoordinator: ObservableObject {
     private var appExposeInvocationToken: UUID?
     private var clickRecoveryTokenCounter: UInt64 = 0
     private var clickSequenceCounter: UInt64 = 0
+    private var folderClickSequenceCounter: UInt64 = 0
     private var activationAssertionTokenCounter: UInt64 = 0
     private var exposeTrackingExpiryTokenCounter: UInt64 = 0
     private var pendingDockClickWatchdogTokenCounter: UInt64 = 0
+    private var pendingFolderClickWatchdogTokenCounter: UInt64 = 0
     private var consumedFollowUpClickWatchdogTokenCounter: UInt64 = 0
     private var deferredModifierFirstClickTokenCounter: UInt64 = 0
     private let appExposeDismissGraceWindow: TimeInterval = 0.02
@@ -97,11 +99,23 @@ final class DockExposeCoordinator: ObservableObject {
     }
 
     private struct PendingFolderClickContext {
+        let clickSequence: UInt64
         let location: CGPoint
         let buttonNumber: Int
         let flags: CGEventFlags
         let folderURL: URL
         let consumeMouseUp: Bool
+    }
+
+    private func clearPendingFolderClickContext(reason: String) {
+        if let context = pendingFolderClickContext {
+            Logger.debug("WORKFLOW: Clearing pending folder click reason=\(reason) path=\(context.folderURL.path) consumeMouseUp=\(context.consumeMouseUp)")
+        } else {
+            Logger.debug("WORKFLOW: Clearing pending folder click reason=\(reason) (none)")
+        }
+        pendingFolderClickContext = nil
+        pendingFolderClickWasDragged = false
+        pendingFolderClickWatchdogTokenCounter += 1
     }
 
     private struct DeferredAppExposeContext {
@@ -449,8 +463,7 @@ final class DockExposeCoordinator: ObservableObject {
             if phase == .up {
                 pendingClickContext = nil
                 pendingClickWasDragged = false
-                pendingFolderClickContext = nil
-                pendingFolderClickWasDragged = false
+                clearPendingFolderClickContext(reason: "nonPrimaryMouseUp")
             }
             Logger.debug("WORKFLOW: Non-primary mouse button \(buttonNumber) - allowing through")
             return false
@@ -459,7 +472,9 @@ final class DockExposeCoordinator: ObservableObject {
         switch phase {
         case .down:
             Logger.debug("WORKFLOW: Click down at \(location.x), \(location.y) button \(buttonNumber)")
-            if let folderURL = folderURLNearPoint(location) {
+            let folderURLAtMouseDown = folderURLNearPoint(location)
+            Logger.debug("WORKFLOW: Folder hit test on mouse-down result=\(folderURLAtMouseDown?.path ?? "nil") point=(\(Int(location.x)),\(Int(location.y)))")
+            if let folderURL = folderURLAtMouseDown {
                 if let deferred = deferredModifierFirstClickContext {
                     executeDeferredModifierFirstClick(deferred, reason: "newDockFolderClick")
                 }
@@ -467,17 +482,24 @@ final class DockExposeCoordinator: ObservableObject {
                 pendingClickWasDragged = false
                 let action = configuredFolderAction(for: .click, flags: flags)
                 let consumeMouseUp = shouldConsumeFolderMouseUp(for: action)
-                pendingFolderClickContext = PendingFolderClickContext(location: location,
+                folderClickSequenceCounter += 1
+                pendingFolderClickContext = PendingFolderClickContext(clickSequence: folderClickSequenceCounter,
+                                                                     location: location,
                                                                      buttonNumber: buttonNumber,
                                                                      flags: flags,
                                                                      folderURL: folderURL,
                                                                      consumeMouseUp: consumeMouseUp)
                 pendingFolderClickWasDragged = false
+                if consumeMouseUp {
+                    pendingFolderClickWatchdogTokenCounter += 1
+                    schedulePendingFolderClickWatchdog(context: pendingFolderClickContext!,
+                                                       watchdogToken: pendingFolderClickWatchdogTokenCounter)
+                }
                 if diagnosticsCaptureActive {
                     lastDockBundleHit = "folder:\(folderURL.path)"
                     lastDockBundleHitAt = Date()
                 }
-                Logger.debug("WORKFLOW: Folder click down path=\(folderURL.path) action=\(action.debugName) modifier=\(modifierCombination(from: flags).rawValue) consumeMouseUp=\(consumeMouseUp)")
+                Logger.debug("WORKFLOW: Created pending folder click path=\(folderURL.path) action=\(action.debugName) modifier=\(modifierCombination(from: flags).rawValue) consumeMouseUp=\(consumeMouseUp)")
                 return false
             }
 
@@ -493,13 +515,11 @@ final class DockExposeCoordinator: ObservableObject {
                 }
                 pendingClickContext = nil
                 pendingClickWasDragged = false
-                pendingFolderClickContext = nil
-                pendingFolderClickWasDragged = false
+                clearPendingFolderClickContext(reason: "nonDockMouseDown")
                 return false
             }
 
-            pendingFolderClickContext = nil
-            pendingFolderClickWasDragged = false
+            clearPendingFolderClickContext(reason: "appDockMouseDown")
 
             if let staleContext = pendingClickContext {
                 let recoveryPoint = DockHitTest.neutralBackgroundPoint(near: staleContext.location)
@@ -594,7 +614,7 @@ final class DockExposeCoordinator: ObservableObject {
         case .dragged:
             if let context = pendingFolderClickContext {
                 pendingFolderClickWasDragged = true
-                Logger.debug("WORKFLOW: Folder click became drag; suppressing folder action")
+                Logger.debug("WORKFLOW: Folder click became drag; suppressing folder action path=\(context.folderURL.path)")
                 return false
             }
             if pendingClickContext != nil {
@@ -606,22 +626,21 @@ final class DockExposeCoordinator: ObservableObject {
 
         case .up:
             if let context = pendingFolderClickContext {
-                defer {
-                    pendingFolderClickContext = nil
-                    pendingFolderClickWasDragged = false
-                }
-
                 if pendingFolderClickWasDragged {
-                    Logger.debug("WORKFLOW: Folder drag completed; allowing Dock drop behavior")
+                    clearPendingFolderClickContext(reason: "folderDragCompleted")
+                    Logger.debug("WORKFLOW: Folder drag completed; allowing Dock drop behavior path=\(context.folderURL.path)")
                     return false
                 }
 
                 let resolvedFolderAtMouseUp = folderURLNearPoint(location) ?? context.folderURL
-                let effectiveContext = PendingFolderClickContext(location: context.location,
+                Logger.debug("WORKFLOW: Folder mouse-up resolution initial=\(context.folderURL.path) resolved=\(resolvedFolderAtMouseUp.path) consumeMouseUp=\(context.consumeMouseUp)")
+                let effectiveContext = PendingFolderClickContext(clickSequence: context.clickSequence,
+                                                                 location: context.location,
                                                                  buttonNumber: context.buttonNumber,
                                                                  flags: context.flags,
                                                                  folderURL: resolvedFolderAtMouseUp,
                                                                  consumeMouseUp: context.consumeMouseUp)
+                clearPendingFolderClickContext(reason: "folderMouseUpHandled")
                 return executeFolderClickAction(effectiveContext)
             }
 
@@ -1362,9 +1381,8 @@ final class DockExposeCoordinator: ObservableObject {
     }
 
     private func shouldConsumeFolderMouseUp(for action: DockFolderAction) -> Bool {
-        guard action.isConfigured else { return false }
-        // Let Dock handle its own stack interactions directly so drag/reorder/drop still work.
-        return !action.opensInDock
+        DockDecisionEngine.shouldConsumeFolderMouseUp(isConfigured: action.isConfigured,
+                                                      opensInDock: action.opensInDock)
     }
 
     private func executeFolderClickAction(_ context: PendingFolderClickContext) -> Bool {
@@ -1374,15 +1392,17 @@ final class DockExposeCoordinator: ObservableObject {
             return false
         }
 
-        if let releasePoint = DockHitTest.neutralBackgroundPoint(near: context.location) {
+        let releasePoint = DockHitTest.neutralBackgroundPoint(near: context.location)
+        Logger.debug("WORKFLOW: Folder neutral background point path=\(context.folderURL.path) found=\(releasePoint != nil) point=\(releasePoint.map { "(\(Int($0.x)),\(Int($0.y)))" } ?? "nil")")
+        if let releasePoint {
             postSyntheticMouseUpPassthrough(at: releasePoint, flags: [])
             Logger.debug("WORKFLOW: Posted neutral folder mouse-up recovery for \(context.folderURL.path) point=(\(Int(releasePoint.x)),\(Int(releasePoint.y)))")
-        } else {
-            Logger.debug("WORKFLOW: No neutral folder recovery point available for \(context.folderURL.path)")
         }
 
         Logger.log("WORKFLOW: Executing folder click action: \(action.debugName) for \(context.folderURL.path) (modifiers=\(modifierCombination(from: context.flags).rawValue), flags=\(context.flags.rawValue))")
-        return DockFolderActionExecutor.perform(action, folderURL: context.folderURL)
+        let succeeded = DockFolderActionExecutor.perform(action, folderURL: context.folderURL)
+        Logger.debug("WORKFLOW: Folder executor result path=\(context.folderURL.path) success=\(succeeded) route=\(String(describing: DockFolderActionExecutor.executionRoute(for: action)))")
+        return succeeded
     }
 
     private func decisionBehavior(from behavior: FirstClickBehavior) -> DecisionFirstClickBehavior {
@@ -1693,6 +1713,7 @@ final class DockExposeCoordinator: ObservableObject {
         activationAssertionTokenCounter += 1
         pendingClickContext = nil
         pendingClickWasDragged = false
+        clearPendingFolderClickContext(reason: "eventTapTimeout")
         clearDeferredModifierFirstClickContext()
         lastScrollBundle = nil
         lastScrollDirection = nil
@@ -2199,6 +2220,21 @@ final class DockExposeCoordinator: ObservableObject {
             self.pendingClickContext = nil
             self.pendingClickWasDragged = false
             postSyntheticMouseUpPassthrough(at: releasePoint, flags: [])
+        }
+    }
+
+    private func schedulePendingFolderClickWatchdog(context: PendingFolderClickContext,
+                                                    watchdogToken: UInt64) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self] in
+            guard let self else { return }
+            guard watchdogToken == self.pendingFolderClickWatchdogTokenCounter else { return }
+            guard let pendingContext = self.pendingFolderClickContext,
+                  pendingContext.clickSequence == context.clickSequence else { return }
+            guard !self.pendingFolderClickWasDragged else { return }
+
+            Logger.debug("WORKFLOW: Pending folder click watchdog executing click=\(context.clickSequence) path=\(pendingContext.folderURL.path)")
+            self.clearPendingFolderClickContext(reason: "folderWatchdog")
+            _ = self.executeFolderClickAction(pendingContext)
         }
     }
 

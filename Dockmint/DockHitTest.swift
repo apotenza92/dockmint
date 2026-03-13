@@ -26,13 +26,22 @@ enum DockHitTest {
         switch subrole {
         case "AXFolderDockItem":
             guard let url, url.isFileURL else { return nil }
-            return .folderDockItem(url)
+            return .folderDockItem(url.standardizedFileURL)
         case "AXApplicationDockItem":
             guard let bundleIdentifier = bundleIdentifier(forApplicationURL: url) else { return nil }
             return .appDockIcon(bundleIdentifier)
         default:
-            return nil
+            break
         }
+
+        // Some Dock folder stacks intermittently resolve without the expected folder subrole.
+        // If AX still gives us a file URL that is not an app bundle, treat it as a folder item.
+        if let url, url.isFileURL, bundleIdentifier(forApplicationURL: url) == nil {
+            Logger.debug("Hit test falling back to folder classification for URL: \(url.path) subrole=\(subrole ?? "nil")")
+            return .folderDockItem(url.standardizedFileURL)
+        }
+
+        return nil
     }
 
     static func pointKind(at point: CGPoint) -> PointKind {
@@ -63,6 +72,20 @@ enum DockHitTest {
             distance == 0 ? [0] : [distance, -distance]
         }
 
+        // Prefer short cardinal moves first; they are less likely to wander onto a neighboring
+        // Dock item than a diagonal grid search when the pressed icon is large.
+        for distance in stride(from: step, through: searchRadius, by: step) {
+            let candidates = [
+                CGPoint(x: point.x, y: point.y - distance),
+                CGPoint(x: point.x, y: point.y + distance),
+                CGPoint(x: point.x - distance, y: point.y),
+                CGPoint(x: point.x + distance, y: point.y)
+            ]
+            for candidate in candidates where pointKind(at: candidate) == .dockBackground {
+                return candidate
+            }
+        }
+
         for dy in offsets {
             for dx in offsets {
                 if dx == 0, dy == 0 { continue }
@@ -70,6 +93,18 @@ enum DockHitTest {
                 if pointKind(at: candidate) == .dockBackground {
                     return candidate
                 }
+            }
+        }
+
+        // Final coarse fallback for large Dock magnification / spacing cases.
+        for distance in stride(from: searchRadius + step, through: searchRadius + 72, by: 24) {
+            let candidates = [
+                CGPoint(x: point.x, y: point.y - distance),
+                CGPoint(x: point.x - distance, y: point.y),
+                CGPoint(x: point.x + distance, y: point.y)
+            ]
+            for candidate in candidates where pointKind(at: candidate) == .dockBackground {
+                return candidate
             }
         }
 

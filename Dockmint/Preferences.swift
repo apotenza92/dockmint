@@ -204,7 +204,7 @@ enum DockFolderView: String, CaseIterable, Codable {
 
     var displayName: String {
         switch self {
-        case .automatic: return "Finder Default"
+        case .automatic: return "Finder Default (Preserve State)"
         case .icon: return "Icon"
         case .list: return "List"
         case .column: return "Column"
@@ -585,7 +585,7 @@ enum AppExposeSlotKey {
 final class Preferences: ObservableObject {
     static let shared = Preferences()
 
-    private let userDefaults = UserDefaults.standard
+    private let userDefaults: UserDefaults
     private let settingsStore: SettingsStore
     private let loginItemRepairKey = "dockmintLoginItemRepairAttempted_v1"
     private let clickActionKey = "clickAction"
@@ -630,6 +630,21 @@ final class Preferences: ObservableObject {
     private let appExposeRequiresMultipleWindowsMapKey = "appExposeRequiresMultipleWindowsMap"
     private let firstClickModifierActionsMigratedKey = "firstClickModifierActionsMigrated_v6"
     private let appExposeRequiresMultipleWindowsMapMigratedKey = "appExposeRequiresMultipleWindowsMapMigrated_v7"
+    private let folderClickDefaultMigratedKey = "folderClickDefaultMigrated_v8"
+
+    static let defaultFolderClickAction = DockFolderAction(
+        openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
+        view: .automatic,
+        sortBy: .none,
+        groupBy: .none
+    )
+
+    private static let legacyDefaultFolderClickAction = DockFolderAction(
+        openInApplicationIdentifier: DockFolderOpenApplicationCatalog.dockIdentifier,
+        view: .automatic,
+        sortBy: .none,
+        groupBy: .none
+    )
 
     private static let showOnStartupPreferenceKey = PreferenceKey<Bool>(name: "showOnStartup", defaultValue: false)
     private static let showMenuBarIconPreferenceKey = PreferenceKey<Bool>(name: "showMenuBarIcon", defaultValue: true)
@@ -898,9 +913,15 @@ final class Preferences: ObservableObject {
         }
     }
 
-    private init() {
+    private init(userDefaults: UserDefaults = .standard,
+                 settingsStore: SettingsStore? = nil,
+                 applyLoginItemRepair: Bool = true) {
+        self.userDefaults = userDefaults
         Self.migrateLegacyDefaultsDomainIfNeeded(defaults: userDefaults)
-        self.settingsStore = SettingsStore(defaults: UserDefaults.standard)
+        self.settingsStore = settingsStore ?? SettingsStore(defaults: userDefaults)
+        Self.applyFolderClickDefaultMigrationIfNeeded(defaults: userDefaults,
+                                                      migrationKey: folderClickDefaultMigratedKey,
+                                                      actionKey: folderClickActionKey)
 
         // Load base mappings from UserDefaults or use defaults.
         var clickAction: DockAction
@@ -982,12 +1003,7 @@ final class Preferences: ObservableObject {
         var shiftScrollDownAction = Self.loadAction(from: userDefaults, forKey: shiftScrollDownActionKey) ?? .none
         var optionScrollDownAction = Self.loadAction(from: userDefaults, forKey: optionScrollDownActionKey) ?? .none
         var shiftOptionScrollDownAction = Self.loadAction(from: userDefaults, forKey: shiftOptionScrollDownActionKey) ?? .none
-        let folderClickAction = Self.loadFolderAction(from: userDefaults, forKey: folderClickActionKey) ?? DockFolderAction(
-            openInApplicationIdentifier: DockFolderOpenApplicationCatalog.dockIdentifier,
-            view: .automatic,
-            sortBy: .none,
-            groupBy: .none
-        )
+        let folderClickAction = Self.loadFolderAction(from: userDefaults, forKey: folderClickActionKey) ?? Self.defaultFolderClickAction
         let shiftFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderClickActionKey) ?? .none
         let optionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderClickActionKey) ?? .none
         let shiftOptionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderClickActionKey) ?? .none
@@ -1091,9 +1107,9 @@ final class Preferences: ObservableObject {
         Self.seedIfMissing(shiftOptionFolderScrollDownAction, in: userDefaults, forKey: shiftOptionFolderScrollDownActionKey)
 
         // General settings defaults
-        let showOnStartup = settingsStore.value(for: Self.showOnStartupPreferenceKey)
-        let showMenuBarIcon = settingsStore.value(for: Self.showMenuBarIconPreferenceKey)
-        let firstLaunchCompleted = settingsStore.value(for: Self.firstLaunchCompletedPreferenceKey)
+        let showOnStartup = self.settingsStore.value(for: Self.showOnStartupPreferenceKey)
+        let showMenuBarIcon = self.settingsStore.value(for: Self.showMenuBarIconPreferenceKey)
+        let firstLaunchCompleted = self.settingsStore.value(for: Self.firstLaunchCompletedPreferenceKey)
 
         // Login item: prefer system status; fall back to stored preference
         let loginItemEnabled = SMAppService.mainApp.status == .enabled
@@ -1104,9 +1120,9 @@ final class Preferences: ObservableObject {
             startAtLogin = userDefaults.object(forKey: startAtLoginKey) as? Bool ?? false
         }
 
-        let updateCheckFrequency = settingsStore.value(for: Self.updateCheckFrequencyPreferenceKey)
+        let updateCheckFrequency = self.settingsStore.value(for: Self.updateCheckFrequencyPreferenceKey)
 
-        let firstClickBehavior = settingsStore.value(for: Self.firstClickBehaviorPreferenceKey)
+        let firstClickBehavior = self.settingsStore.value(for: Self.firstClickBehaviorPreferenceKey)
 
         let firstClickAppExposeRequiresMultipleWindows = userDefaults.object(forKey: firstClickAppExposeRequiresMultipleWindowsKey) as? Bool ?? true
         let clickAppExposeRequiresMultipleWindows = userDefaults.object(forKey: clickAppExposeRequiresMultipleWindowsKey) as? Bool ?? false
@@ -1159,7 +1175,15 @@ final class Preferences: ObservableObject {
         self.startAtLogin = startAtLogin
         self.updateCheckFrequency = updateCheckFrequency
 
-        repairLoginItemIfNeeded()
+        if applyLoginItemRepair {
+            repairLoginItemIfNeeded()
+        }
+    }
+
+    convenience init(testingUserDefaults: UserDefaults) {
+        self.init(userDefaults: testingUserDefaults,
+                  settingsStore: SettingsStore(defaults: testingUserDefaults),
+                  applyLoginItemRepair: false)
     }
 
     private static func migrateLegacyDefaultsDomainIfNeeded(defaults: UserDefaults) {
@@ -1181,6 +1205,28 @@ final class Preferences: ObservableObject {
             defaults.set(value, forKey: key)
         }
         defaults.set(true, forKey: "dockmintDefaultsDomainMigrated_v1")
+    }
+
+    private static func applyFolderClickDefaultMigrationIfNeeded(defaults: UserDefaults,
+                                                                 migrationKey: String,
+                                                                 actionKey: String) {
+        guard defaults.bool(forKey: migrationKey) == false else {
+            return
+        }
+
+        defer {
+            defaults.set(true, forKey: migrationKey)
+        }
+
+        // Existing users keep any intentional folder-click customization. We only rewrite the
+        // exact historical plain-click default so those installs pick up the new Finder-native
+        // behavior without affecting explicit Finder automation or custom app targets.
+        guard let storedAction = loadFolderAction(from: defaults, forKey: actionKey),
+              storedAction == Self.legacyDefaultFolderClickAction else {
+            return
+        }
+
+        defaults.set(Self.defaultFolderClickAction.storageValue, forKey: actionKey)
     }
 
     private func repairLoginItemIfNeeded() {
@@ -1289,12 +1335,7 @@ final class Preferences: ObservableObject {
     }
 
     func resetFolderActionsToDefaults() {
-        folderClickAction = DockFolderAction(
-            openInApplicationIdentifier: DockFolderOpenApplicationCatalog.dockIdentifier,
-            view: .automatic,
-            sortBy: .none,
-            groupBy: .none
-        )
+        folderClickAction = Self.defaultFolderClickAction
         shiftFolderClickAction = .none
         optionFolderClickAction = .none
         shiftOptionFolderClickAction = .none

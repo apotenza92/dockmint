@@ -2,50 +2,80 @@ import AppKit
 import Foundation
 
 enum DockFolderActionExecutor {
-    static func perform(_ action: DockFolderAction, folderURL: URL) -> Bool {
-        guard folderURL.isFileURL else { return false }
+    enum ExecutionRoute: Equatable {
+        case none
+        case dock
+        case finderPassthrough
+        case finderScripted
+        case customApplication
+    }
+
+    static func executionRoute(for action: DockFolderAction) -> ExecutionRoute {
         guard action.isConfigured else {
-            return false
+            return .none
         }
 
         if action.opensInDock {
-            return openWithDock(action, folderURL: folderURL)
+            return .dock
         }
 
         if !action.opensInFinder {
+            return .customApplication
+        }
+
+        // Finder passthrough keeps Finder in charge of any remembered window, view, group,
+        // and sort state. Any explicit Finder option opts into Dockmint-managed automation.
+        return action.isFinderPassthrough ? .finderPassthrough : .finderScripted
+    }
+
+    static func perform(_ action: DockFolderAction, folderURL: URL) -> Bool {
+        guard folderURL.isFileURL else { return false }
+
+        switch executionRoute(for: action) {
+        case .none:
+            return false
+        case .dock:
+            return openWithDock(action, folderURL: folderURL)
+        case .finderPassthrough:
+            return openInFinderPreservingExistingWindow(folderURL)
+        case .customApplication:
             return open(folderURL, withApplicationIdentifier: action.openInApplicationIdentifier)
-        }
+        case .finderScripted:
+            let groupedSortBy = action.groupBy.defaultSortBy ?? action.sortBy
+            let menuConfiguration = FinderMenuConfiguration(
+                groupMenuItemTitle: groupMenuItemTitle(for: action.groupBy),
+                groupedSortMenuItemTitle: sortMenuItemTitle(for: groupedSortBy),
+                sortMenuItemTitle: action.groupBy == .none ? sortMenuItemTitle(for: action.sortBy) : nil
+            )
 
-        if action.isFinderPassthrough {
-            return open(folderURL, withApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier)
-        }
+            switch action.view {
+            case .automatic:
+                assert(menuConfiguration.requiresMenuAutomation,
+                       "Finder automatic view should only take the scripted path when explicit group/sort overrides are present")
+            case .icon, .list, .column:
+                break
+            }
 
-        let groupedSortBy = action.groupBy.defaultSortBy ?? action.sortBy
-        let menuConfiguration = FinderMenuConfiguration(
-            groupMenuItemTitle: groupMenuItemTitle(for: action.groupBy),
-            groupedSortMenuItemTitle: sortMenuItemTitle(for: groupedSortBy),
-            sortMenuItemTitle: action.groupBy == .none ? sortMenuItemTitle(for: action.sortBy) : nil
-        )
+            if menuConfiguration.requiresMenuAutomation {
+                runFinderScript(for: folderURL,
+                                view: configuredFinderView(for: action),
+                                menuConfiguration: menuConfiguration)
+                return true
+            }
 
-        if menuConfiguration.requiresMenuAutomation {
-            runFinderScript(for: folderURL,
-                            view: configuredFinderView(for: action),
-                            menuConfiguration: menuConfiguration)
-            return true
-        }
-
-        switch action.view {
-        case .automatic:
-            return open(folderURL, withApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier)
-        case .icon:
-            runFinderScript(for: folderURL, view: .icon)
-            return true
-        case .list:
-            runFinderScript(for: folderURL, view: .list)
-            return true
-        case .column:
-            runFinderScript(for: folderURL, view: .column)
-            return true
+            switch action.view {
+            case .automatic:
+                return open(folderURL, withApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier)
+            case .icon:
+                runFinderScript(for: folderURL, view: .icon)
+                return true
+            case .list:
+                runFinderScript(for: folderURL, view: .list)
+                return true
+            case .column:
+                runFinderScript(for: folderURL, view: .column)
+                return true
+            }
         }
     }
 
@@ -115,6 +145,40 @@ enum DockFolderActionExecutor {
     }
 
 
+    private static func openInFinderPreservingExistingWindow(_ folderURL: URL) -> Bool {
+        let standardizedFolderURL = folderURL.standardizedFileURL
+        if focusExistingFinderWindow(for: standardizedFolderURL) {
+            Logger.debug("DockFolderActionExecutor: Reused existing Finder window for \(standardizedFolderURL.path)")
+            return true
+        }
+        return open(standardizedFolderURL, withApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier)
+    }
+
+    private static func focusExistingFinderWindow(for folderURL: URL) -> Bool {
+        let lines = [
+            "tell application \"Finder\"",
+            "activate",
+            "set targetFolder to POSIX file \(appleScriptStringLiteral(folderURL.path)) as alias",
+            "repeat with targetWindow in Finder windows",
+            "try",
+            "if (target of targetWindow as alias) is targetFolder then",
+            "set index of targetWindow to 1",
+            "return \"found\"",
+            "end if",
+            "end try",
+            "end repeat",
+            "return \"missing\"",
+            "end tell"
+        ]
+
+        guard let output = runAppleScriptSync(lines) else {
+            return false
+        }
+
+        return output == "found"
+    }
+
+    @discardableResult
     private static func open(_ folderURL: URL, withApplicationIdentifier identifier: String) -> Bool {
         guard let applicationURL = DockFolderOpenApplicationCatalog.applicationURL(for: identifier) else {
             Logger.log("DockFolderActionExecutor: Failed to resolve application for \(identifier)")
@@ -164,26 +228,34 @@ enum DockFolderActionExecutor {
         let lines = appleScriptLines(folderPath: folderPath, view: view, menuConfiguration: menuConfiguration)
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            task.arguments = lines.flatMap { ["-e", $0] }
+            _ = runAppleScriptSync(lines)
+        }
+    }
 
-            let outputPipe = Pipe()
-            task.standardOutput = outputPipe
-            task.standardError = outputPipe
+    @discardableResult
+    private static func runAppleScriptSync(_ lines: [String]) -> String? {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = lines.flatMap { ["-e", $0] }
 
-            do {
-                try task.run()
-                task.waitUntilExit()
+        let outputPipe = Pipe()
+        task.standardOutput = outputPipe
+        task.standardError = outputPipe
 
-                if task.terminationStatus != 0 {
-                    let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    Logger.log("DockFolderActionExecutor: Finder script failed (\(task.terminationStatus)) output=\(output)")
-                }
-            } catch {
-                Logger.log("DockFolderActionExecutor: Failed to run Finder script: \(error.localizedDescription)")
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if task.terminationStatus != 0 {
+                Logger.log("DockFolderActionExecutor: Finder script failed (\(task.terminationStatus)) output=\(output)")
+                return nil
             }
+            return output
+        } catch {
+            Logger.log("DockFolderActionExecutor: Failed to run Finder script: \(error.localizedDescription)")
+            return nil
         }
     }
 

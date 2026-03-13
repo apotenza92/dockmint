@@ -316,7 +316,7 @@ struct PreferencesView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     paneSectionHeader(
                         title: "Folder Actions",
-                        description: "Choose what happens when you click or scroll on folder stacks in the Dock.",
+                        description: "Choose what happens when you click or scroll on folder stacks in the Dock. Finder Default preserves Finder’s remembered window, view, group, and sort state; choosing explicit Finder options makes Dockmint override them.",
                         buttonTitle: "Reset Folder Actions",
                         action: preferences.resetFolderActionsToDefaults
                     )
@@ -460,7 +460,7 @@ struct PreferencesView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 paneSectionHeader(
                     title: "Folder Actions",
-                    description: "Choose what happens when you click or scroll on folder stacks in the Dock.",
+                    description: "Choose what happens when you click or scroll on folder stacks in the Dock. Finder Default preserves Finder’s remembered window, view, group, and sort state; choosing explicit Finder options makes Dockmint override them.",
                     buttonTitle: "Reset Folder Actions",
                     action: preferences.resetFolderActionsToDefaults
                 )
@@ -819,7 +819,7 @@ struct PreferencesView: View {
         case .icon:
             return "None"
         case .automatic, .list, .column:
-            return "Finder Default"
+            return "Finder Default (Preserve State)"
         }
     }
 

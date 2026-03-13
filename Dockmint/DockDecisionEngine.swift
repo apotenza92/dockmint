@@ -135,6 +135,13 @@ enum DockDecisionEngine {
         }
     }
 
+    static func shouldConsumeFolderMouseUp(isConfigured: Bool,
+                                           opensInDock: Bool) -> Bool {
+        guard isConfigured else { return false }
+        // Let Dock-owned actions keep native stack press/drag/drop behavior.
+        return !opensInDock
+    }
+
     static func resolvedScrollDelta(primaryAxis: DecisionScrollAxisDelta,
                                     alternateAxis: DecisionScrollAxisDelta? = nil,
                                     isContinuous: Bool,

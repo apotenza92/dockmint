@@ -199,9 +199,16 @@ final class DockClickEventTap {
     private func didReceiveClick(event: CGEvent, phase: ClickPhase) -> Bool {
         let sourceUserData = event.getIntegerValueField(.eventSourceUserData)
         if sourceUserData == DockClickEventTap.syntheticReleasePassthroughUserData {
-            resetInteractionState()
+            // This event exists only to restore Dock/AppKit pressed-state semantics after we
+            // consume a real click-up. The original physical mouse-up already cleared our
+            // tracking state, so a delayed synthetic release must never wipe a newer in-flight
+            // physical click.
             syntheticReleaseHandler?()
-            Logger.debug("DockClickEventTap: Passthrough synthetic release event")
+            if leftMouseDownPoint != nil {
+                Logger.debug("DockClickEventTap: Passthrough synthetic release event during active click; preserving tracking state")
+            } else {
+                Logger.debug("DockClickEventTap: Passthrough synthetic release event")
+            }
             return false
         }
 
