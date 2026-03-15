@@ -4,6 +4,7 @@ import SwiftUI
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    @MainActor
     private enum WindowMode {
         case onboarding
         case settings

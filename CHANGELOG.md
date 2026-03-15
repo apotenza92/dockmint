@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.2.8]
+
+- Reissued the onboarding and single-click App Exposé update after fixing Swift 6 actor-isolation build failures that blocked CI and signed release packaging for the `v0.2.7` tag.
+- Refreshed the GUI automation fixtures to rely on built-in macOS apps only, using Finder for 1-window Dock checks and TextEdit/Safari for multi-window coverage while forcing real separate windows even when the host prefers tabs.
+- Revalidated the shipped defaults and focused App Exposé flows with the refreshed built-in GUI suites, including default-install checks, active-app App Exposé stress, and the Dock context-menu guard.
+
 ## [v0.2.7]
 
 - Reworked first-run setup into a single-screen onboarding flow with direct permission guidance, weekly background update checks enabled by default, a gated `Finish Setup` action, and a short post-setup menu bar icon confirmation instead of dropping new installs straight into Settings.

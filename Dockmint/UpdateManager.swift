@@ -187,40 +187,52 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         return "Update check failed: \(nsError.localizedDescription)"
     }
 
-    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
-        finishUpdateCheckIfNeeded()
-        updateStatusText = "Update available: \(item.displayVersionString)"
+    nonisolated func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        Task { @MainActor in
+            finishUpdateCheckIfNeeded()
+            updateStatusText = "Update available: \(item.displayVersionString)"
+        }
     }
 
-    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
-        finishUpdateCheckIfNeeded()
-        updateStatusText = "You're up to date."
+    nonisolated func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        Task { @MainActor in
+            finishUpdateCheckIfNeeded()
+            updateStatusText = "You're up to date."
+        }
     }
 
-    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
-        finishUpdateCheckIfNeeded()
-        updateStatusText = "You're up to date."
+    nonisolated func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
+        Task { @MainActor in
+            finishUpdateCheckIfNeeded()
+            updateStatusText = "You're up to date."
+        }
     }
 
-    func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
-        finishUpdateCheckIfNeeded()
-        updateStatusText = "Installing update \(item.displayVersionString)..."
+    nonisolated func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
+        Task { @MainActor in
+            finishUpdateCheckIfNeeded()
+            updateStatusText = "Installing update \(item.displayVersionString)..."
+        }
     }
 
-    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
-        finishUpdateCheckIfNeeded()
-        updateStatusText = updateStatusText(for: error)
-    }
-
-    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
-        if let error {
+    nonisolated func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        Task { @MainActor in
             finishUpdateCheckIfNeeded()
             updateStatusText = updateStatusText(for: error)
-            return
         }
+    }
 
-        guard isCheckingForUpdates else { return }
-        finishUpdateCheckIfNeeded()
-        updateStatusText = "Update check finished."
+    nonisolated func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
+        Task { @MainActor in
+            if let error {
+                finishUpdateCheckIfNeeded()
+                updateStatusText = updateStatusText(for: error)
+                return
+            }
+
+            guard isCheckingForUpdates else { return }
+            finishUpdateCheckIfNeeded()
+            updateStatusText = "Update check finished."
+        }
     }
 }

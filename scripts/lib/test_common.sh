@@ -714,6 +714,26 @@ OSA
   wait_for_process_window_count_exact "Safari" "$desired_count" 8
 }
 
+prepare_textedit_windows_exact() {
+  local desired_count="${1:-2}"
+  set_window_tabbing_mode manual
+  open -b "com.apple.TextEdit" >/dev/null 2>&1 || return 1
+  wait_for_process_running_by_bundle "com.apple.TextEdit" 8 || return 1
+  osascript <<OSA >/dev/null 2>&1 || return 1
+tell application "TextEdit"
+  activate
+  try
+    close every window saving no
+  end try
+  delay 0.3
+  repeat with i from 1 to ${desired_count}
+    make new document
+  end repeat
+end tell
+OSA
+  wait_for_process_window_count_exact "TextEdit" "$desired_count" 8
+}
+
 builtin_single_window_dock_target() {
   prepare_finder_windows_exact 1 || return 1
   local process_name="Finder"
@@ -724,6 +744,15 @@ builtin_single_window_dock_target() {
 }
 
 builtin_multi_window_dock_target() {
+  if prepare_textedit_windows_exact 3; then
+    local process_name="TextEdit"
+    local bundle_identifier="com.apple.TextEdit"
+    local icon_name
+    icon_name="$(dock_icon_name_for_bundle "$bundle_identifier")" || return 1
+    printf '%s|%s|%s\n' "$icon_name" "$process_name" "$bundle_identifier"
+    return 0
+  fi
+
   prepare_safari_windows_exact 3 || return 1
   local process_name="Safari"
   local bundle_identifier="com.apple.Safari"

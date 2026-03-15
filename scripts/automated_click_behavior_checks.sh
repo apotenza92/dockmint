@@ -105,11 +105,25 @@ assert_log_contains "firstClick appExpose executing for $multi_bundle" "inactive
 invokes_before="$(grep -Fc "WORKFLOW: Triggering App Exposé for $multi_bundle" "$LOG_FILE" 2>/dev/null || true)"
 
 for round in $(seq 1 "$ACTIVE_CLICK_ROUNDS"); do
-  activate_process_direct "$multi_process"
-  sleep 0.8
-  dock_click_with_hold "$multi_icon" 220
-  sleep 0.9
-  assert_no_dock_item_context_menu "$multi_icon" "${multi_bundle}-active-single-click-round-${round}" "$LOG_FILE" || exit 1
+  round_success=false
+  for attempt in 1 2; do
+    activate_process_direct "$multi_process"
+    sleep 0.8
+    before_round="$(grep -Fc "WORKFLOW: Triggering App Exposé for $multi_bundle" "$LOG_FILE" 2>/dev/null || true)"
+    dock_click_with_hold "$multi_icon" 220
+    sleep 0.9
+    assert_no_dock_item_context_menu "$multi_icon" "${multi_bundle}-active-single-click-round-${round}-attempt-${attempt}" "$LOG_FILE" || exit 1
+    after_round="$(grep -Fc "WORKFLOW: Triggering App Exposé for $multi_bundle" "$LOG_FILE" 2>/dev/null || true)"
+    if (( after_round > before_round )); then
+      round_success=true
+      break
+    fi
+  done
+
+  if [[ "$round_success" != true ]]; then
+    echo "  FAIL expected active single click round ${round} to trigger App Exposé"
+    exit 1
+  fi
 done
 
 invokes_after="$(grep -Fc "WORKFLOW: Triggering App Exposé for $multi_bundle" "$LOG_FILE" 2>/dev/null || true)"

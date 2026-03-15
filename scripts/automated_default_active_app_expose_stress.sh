@@ -24,12 +24,13 @@ trap cleanup EXIT
 
 set_dock_autohide false >>"$LOG_FILE" 2>&1 || true
 set_window_tabbing_mode manual
-multi_target="$(builtin_multi_window_dock_target || true)"
-if [[ -z "$multi_target" ]]; then
+prepare_safari_windows_exact 3 >/dev/null 2>&1 || {
   echo "FAIL missing_multi_window_target artifact_dir=$TEST_ARTIFACT_DIR"
   exit 1
-fi
-IFS='|' read -r TEST_DOCK_ICON_A TEST_PROCESS_A TEST_BUNDLE_A <<<"$multi_target"
+}
+TEST_DOCK_ICON_A="$(dock_icon_name_for_bundle "com.apple.Safari")"
+TEST_PROCESS_A="Safari"
+TEST_BUNDLE_A="com.apple.Safari"
 
 echo "using target icon=$TEST_DOCK_ICON_A process=$TEST_PROCESS_A bundle=$TEST_BUNDLE_A" >>"$LOG_FILE"
 
