@@ -12,24 +12,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let openSettingsLaunchArguments: Set<String> = ["--settings", "-settings", "--open-settings"]
     private var openSettingsObservers: [NSObjectProtocol] = []
 
-    private static var shouldManageOtherDockmintInstances: Bool {
-        #if DEBUG
-        return true
-        #else
-        return false
-        #endif
+    private static var shouldManageOtherRunningIdentityInstances: Bool {
+        AppIdentity.isDevelopmentIdentity
     }
 
-    private static var shouldAlwaysShowSettingsOnLaunchForLocalDebugBuild: Bool {
-        #if DEBUG
-        return !AppIdentity.boolFlag(primary: "DOCKMINT_TEST_SUITE", legacy: "DOCKTOR_TEST_SUITE")
-        #else
-        return false
-        #endif
+    private static var shouldAlwaysShowSettingsOnLaunchForLocalDevelopmentBuild: Bool {
+        AppIdentity.isDevelopmentIdentity
+            && !AppIdentity.boolFlag(primary: "DOCKMINT_TEST_SUITE", legacy: "DOCKTOR_TEST_SUITE")
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        Logger.prepareForLaunch()
         migrateInstalledAppBundleNameIfNeeded()
         Logger.log("Launched bundle at \(Bundle.main.bundleURL.path), bundleId \(Bundle.main.bundleIdentifier ?? "nil"), pid \(ProcessInfo.processInfo.processIdentifier), LSUIElement \(Bundle.main.object(forInfoDictionaryKey: "LSUIElement") as? Bool ?? false)")
 
@@ -37,46 +31,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let launchRequestsSettings = ProcessInfo.processInfo.arguments.contains { openSettingsLaunchArguments.contains($0) }
         let launchedFromFinder = isFinderLaunch()
-        let explicitSettingsRequest = launchRequestsSettings || launchedFromFinder
+        let launchDecision = LaunchBehavior.decide(
+            LaunchBehaviorInput(
+                isDebugBuild: Self.shouldAlwaysShowSettingsOnLaunchForLocalDevelopmentBuild,
+                onboardingCompleted: preferences.isOnboardingCompleted,
+                showOnStartup: preferences.showOnStartup,
+                launchArgumentsRequestSettings: launchRequestsSettings,
+                launchedFromFinder: launchedFromFinder
+            )
+        )
 
-        // Important: do NOT hand off Finder launches to an existing instance.
-        // Sparkle relaunches and in-app restart flows also look like Finder launches (`-psn_`),
-        // and handing those off can cause the freshly launched process to exit.
-        let shouldRequestSettingsFromExisting = launchRequestsSettings
-
-        if resolveRunningInstances(shouldRequestSettingsFromExisting: shouldRequestSettingsFromExisting) {
+        if resolveRunningInstances(
+            shouldRequestSettingsFromExisting: launchDecision.shouldRequestSettingsFromExistingInstance
+        ) {
             return
         }
 
         menuBarController = MenuBarController(preferences: preferences, appDelegate: self)
         coordinator.startIfPossible()
+        coordinator.refreshPermissionsAfterExternalChange()
         updateManager.configureForLaunch(isAutomatedMode: false)
 
-        let isFirstLaunch = !preferences.firstLaunchCompleted
-        let shouldShowWindow = explicitSettingsRequest
-            || isFirstLaunch
-            || preferences.showOnStartup
-            || Self.shouldAlwaysShowSettingsOnLaunchForLocalDebugBuild
         if launchRequestsSettings {
             Logger.log("Launch argument requested settings window")
         }
         if launchedFromFinder {
             Logger.log("Finder launch detected")
         }
-        if Self.shouldAlwaysShowSettingsOnLaunchForLocalDebugBuild {
-            Logger.log("Local Debug build detected; opening settings window on launch")
+        if Self.shouldAlwaysShowSettingsOnLaunchForLocalDevelopmentBuild {
+            Logger.log("Development identity detected; opening settings window on launch")
         }
 
         DispatchQueue.main.async {
-            if explicitSettingsRequest {
-                self.restoreMenuBarIconIfNeeded()
-            }
-            if shouldShowWindow {
-                self.showSettingsWindow()
-            }
-            self.handlePermissionsIfNeeded(allowPrompt: shouldShowWindow)
-            if isFirstLaunch {
-                self.preferences.firstLaunchCompleted = true
+            switch launchDecision.initialWindowRequest {
+            case .none:
+                break
+            case .onboarding:
+                self.showSettingsWindow(explicit: false)
+            case let .settings(explicit):
+                self.showSettingsWindow(explicit: explicit)
             }
         }
     }
@@ -87,14 +80,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @discardableResult
     private func resolveRunningInstances(shouldRequestSettingsFromExisting: Bool) -> Bool {
-        guard Self.shouldManageOtherDockmintInstances || shouldRequestSettingsFromExisting else {
+        guard Self.shouldManageOtherRunningIdentityInstances || shouldRequestSettingsFromExisting else {
             return false
         }
 
         let me = ProcessInfo.processInfo.processIdentifier
         let others = NSWorkspace.shared.runningApplications
             .filter { $0.processIdentifier != me }
-            .filter(isDockmintFamilyApplication)
+            .filter(isCurrentIdentityApplication)
 
         guard !others.isEmpty else { return false }
 
@@ -108,24 +101,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return true
         }
 
-        guard Self.shouldManageOtherDockmintInstances else {
-            Logger.log("Other Dockmint-family instances detected but duplicate-instance management is disabled for this build: \(describeRunningApplications(others))")
+        guard Self.shouldManageOtherRunningIdentityInstances else {
+            Logger.log("Other \(AppServices.appDisplayName) identity instances detected but duplicate-instance management is disabled: \(describeRunningApplications(others))")
             return false
         }
 
-        Logger.log("Terminating other Dockmint instances: \(describeRunningApplications(others))")
+        Logger.log("Terminating other \(AppServices.appDisplayName) identity instances: \(describeRunningApplications(others))")
         terminateRunningApplications(others)
         return false
     }
 
-    private func isDockmintFamilyApplication(_ app: NSRunningApplication) -> Bool {
+    private func isCurrentIdentityApplication(_ app: NSRunningApplication) -> Bool {
         if let bundleIdentifier = app.bundleIdentifier,
-           AppIdentity.familyBundleIdentifiers.contains(bundleIdentifier) {
+           AppIdentity.instanceBundleIdentifiers.contains(bundleIdentifier) {
             return true
         }
 
         if let localizedName = app.localizedName,
-           AppIdentity.familyAppNames.contains(localizedName) {
+           AppIdentity.instanceAppNames.contains(localizedName) {
             return true
         }
 
@@ -133,8 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
 
-        let appBundleNames = AppIdentity.legacyAppBundleNames.union([AppIdentity.stableBundleName, AppIdentity.betaBundleName])
-        if appBundleNames.contains(bundleURL.lastPathComponent) {
+        if AppIdentity.instanceBundleNames.contains(bundleURL.lastPathComponent) {
             return true
         }
 
@@ -150,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         return bundleMetadata.contains { value in
             guard let value else { return false }
-            return AppIdentity.familyAppNames.contains(value)
+            return AppIdentity.instanceAppNames.contains(value)
         }
     }
 
@@ -212,8 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     Logger.log("Received distributed settings-open request")
-                    self.restoreMenuBarIconIfNeeded()
-                    self.showSettingsWindow()
+                    self.showSettingsWindow(explicit: true)
                 }
             }
             openSettingsObservers.append(observer)
@@ -280,30 +271,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         Logger.log("Received app reopen request")
-        restoreMenuBarIconIfNeeded()
-        showSettingsWindow()
+        showSettingsWindow(explicit: true)
         return false
     }
 
-    private func handlePermissionsIfNeeded(allowPrompt: Bool) {
-        let needsAccessibility = !coordinator.hasAccessibilityPermission
-        let needsInputMonitoring = !coordinator.inputMonitoringGranted
-        guard needsAccessibility || needsInputMonitoring else { return }
-
-        if allowPrompt && needsAccessibility {
-            coordinator.requestAccessibilityPermission()
-        }
-
-        if allowPrompt && needsInputMonitoring {
-            let delay: TimeInterval = needsAccessibility ? 0.6 : 0
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self else { return }
-                self.coordinator.requestInputMonitoringPermission()
-                self.coordinator.startWhenPermissionAvailable()
-            }
-        } else {
-            coordinator.startWhenPermissionAvailable()
-        }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        coordinator.refreshPermissionsAfterExternalChange()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -321,13 +294,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let path = url.path.lowercased()
         if host == "settings" || host == "preferences" || path == "/settings" || path == "/preferences" {
             Logger.log("Received URL request to open settings: \(url.absoluteString)")
-            restoreMenuBarIconIfNeeded()
-            showSettingsWindow()
+            showSettingsWindow(explicit: true)
         }
     }
 
-    func showSettingsWindow() {
-        Logger.log("Opening settings window")
+    func showSettingsWindow(explicit: Bool = false) {
+        if explicit {
+            restoreMenuBarIconIfNeeded()
+        }
+        Logger.log("Opening settings window explicit=\(explicit) onboardingIncomplete=\(!preferences.isOnboardingCompleted)")
+        coordinator.refreshPermissionsAfterExternalChange()
         let openSession = SettingsPerformance.begin(.settingsOpen)
         settingsWindowController.show(openSession: openSession)
     }

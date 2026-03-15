@@ -13,6 +13,8 @@ cleanup() {
   write_pref_bool showMenuBarIcon true
   write_pref_bool showOnStartup false
   write_pref_bool firstLaunchCompleted true
+  write_pref_string onboardingState completed
+  write_pref_bool persistentDiagnosticFileLoggingEnabled false
   ensure_no_dockmint
   restore_dock_state
 }
@@ -55,6 +57,7 @@ echo "[settings-shell] first launch opens settings once"
 write_pref_bool showMenuBarIcon true
 write_pref_bool showOnStartup false
 delete_pref firstLaunchCompleted
+delete_pref onboardingState
 
 start_dockmint /tmp/dockmint-settings-shell-first-launch.log
 wait_for_log_contains "Opening settings window" /tmp/dockmint-settings-shell-first-launch.log 6 || true
@@ -62,13 +65,26 @@ if ! log_contains "Opening settings window" /tmp/dockmint-settings-shell-first-l
   echo "  FAIL: expected first launch to open settings"
   exit 1
 fi
-if ! wait_for_pref_bool firstLaunchCompleted 1 5; then
-  first_launch_completed="$(read_pref_bool firstLaunchCompleted)"
-  echo "  FAIL: expected firstLaunchCompleted to be persisted after first launch"
+if [[ "$(read_pref_bool showMenuBarIcon)" != "1" ]]; then
+  echo "  FAIL: expected showMenuBarIcon default to remain on"
+  exit 1
+fi
+if [[ "$(read_pref_bool showOnStartup)" != "0" ]]; then
+  echo "  FAIL: expected showOnStartup default to remain off"
+  exit 1
+fi
+if [[ "$(defaults read "$BUNDLE_ID" backgroundUpdateChecksEnabled 2>/dev/null || echo "__missing__")" != "1" ]]; then
+  echo "  FAIL: expected background update checks default to remain on"
+  exit 1
+fi
+if [[ "$(defaults read "$BUNDLE_ID" updateCheckFrequency 2>/dev/null || echo "__missing__")" != "weekly" ]]; then
+  echo "  FAIL: expected updateCheckFrequency default to be weekly"
   exit 1
 fi
 stop_dockmint
 
+write_pref_bool firstLaunchCompleted true
+write_pref_string onboardingState completed
 start_dockmint /tmp/dockmint-settings-shell-second-launch.log
 sleep 2
 stop_dockmint
@@ -77,33 +93,43 @@ if log_contains "Opening settings window" /tmp/dockmint-settings-shell-second-la
   exit 1
 fi
 
-echo "[settings-shell] --settings fail-safe"
+echo "[settings-shell] --settings opens the running dev instance"
 write_pref_bool showMenuBarIcon false
 write_pref_bool showOnStartup false
 write_pref_bool firstLaunchCompleted true
-start_dockmint /tmp/dockmint-settings-shell-args.log --settings
-wait_for_log_contains "Launch argument requested settings window" /tmp/dockmint-settings-shell-args.log 6 || true
-wait_for_log_contains "Opening settings window" /tmp/dockmint-settings-shell-args.log 6 || true
+start_dockmint /tmp/dockmint-settings-shell-running.log
+assert_dockmint_alive /tmp/dockmint-settings-shell-running.log "primary settings-shell Dockmint Dev process"
+
+DOCKMINT_DEBUG_LOG="${DOCKMINT_DEBUG_LOG:-1}" \
+DOCKTOR_DEBUG_LOG="${DOCKTOR_DEBUG_LOG:-1}" \
+DOCKMINT_TEST_SUITE=1 \
+DOCKTOR_TEST_SUITE=1 \
+"$APP_BIN" --settings >/tmp/dockmint-settings-shell-request.log 2>&1 || true
+
+wait_for_log_contains "Received distributed settings-open request" /tmp/dockmint-settings-shell-running.log 6 || true
+wait_for_log_contains "Opening settings window" /tmp/dockmint-settings-shell-running.log 6 || true
+assert_dockmint_alive /tmp/dockmint-settings-shell-running.log "primary settings-shell Dockmint Dev process after --settings handoff"
 stop_dockmint
-if ! log_contains "Launch argument requested settings window" /tmp/dockmint-settings-shell-args.log; then
-  echo "  FAIL: missing launch-argument settings log"
+if ! log_contains "Received distributed settings-open request" /tmp/dockmint-settings-shell-running.log; then
+  echo "  FAIL: missing distributed settings-open log for --settings handoff"
   exit 1
 fi
-if ! log_contains "Opening settings window" /tmp/dockmint-settings-shell-args.log; then
-  echo "  FAIL: missing settings open log for --settings"
+if ! log_contains "Opening settings window" /tmp/dockmint-settings-shell-running.log; then
+  echo "  FAIL: missing settings open log in running instance for --settings"
   exit 1
 fi
 
-echo "[settings-shell] URL fail-safe"
+echo "[settings-shell] dev URL fail-safe"
+write_pref_bool persistentDiagnosticFileLoggingEnabled true
 ensure_no_dockmint
-latest_before="$(ls -t "$HOME"/Code/Dockmint/logs/Dockmint-*.log 2>/dev/null | head -n 1 || true)"
+latest_before="$(latest_dockmint_persistent_log)"
 open -na "$APP_BUNDLE" >/dev/null 2>&1 || true
 sleep 2
-open -a "$APP_BUNDLE" "dockmint://settings" >/dev/null 2>&1 || true
+open -a "$APP_BUNDLE" "dockmint-dev://settings" >/dev/null 2>&1 || true
 sleep 2
 ensure_no_dockmint
 sleep 0.5
-latest_after="$(ls -t "$HOME"/Code/Dockmint/logs/Dockmint-*.log 2>/dev/null | head -n 1 || true)"
+latest_after="$(latest_dockmint_persistent_log)"
 if [[ -z "$latest_after" ]]; then
   echo "  FAIL: no Dockmint log found for URL test"
   exit 1
@@ -114,7 +140,7 @@ fi
 if log_contains "Received URL request to open settings" "$latest_after"; then
   echo "  URL handler log observed"
 else
-  echo "  FAIL: missing URL handler log for app-targeted settings URL"
+  echo "  FAIL: missing URL handler log for dockmint-dev://settings"
   exit 1
 fi
 

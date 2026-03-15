@@ -1,5 +1,4 @@
 import AppKit
-import Darwin
 
 struct HotKey {
     let keyCode: CGKeyCode
@@ -21,6 +20,13 @@ struct AppExposeInvokeResult {
     let frontmostAfter: String
 }
 
+struct AppExposeDispatchReceipt {
+    let dispatched: Bool
+    let strategy: AppExposeInvokeStrategy?
+    let attempts: [String]
+    let frontmostAfterDispatch: String
+}
+
 private struct DockWindowSignature: Hashable {
     let windowNumber: Int
     let layer: Int
@@ -36,10 +42,11 @@ private struct AppExposeAttemptOutcome {
     let strategy: AppExposeInvokeStrategy?
 }
 
-/// Triggers App Expose via Dock private API.
+/// Triggers App Exposé via Dock private API.
+@MainActor
 final class AppExposeInvoker {
     private let appExposeDockNotification = "com.apple.expose.front.awake"
-    private let evidenceSampleDelaysUs: [useconds_t] = [80_000, 140_000, 220_000]
+    private let evidenceSampleDelaysNs: [UInt64] = [60_000_000, 120_000_000, 180_000_000]
 
     // Diagnostics kept for UI/test compatibility.
     private(set) var lastResolvedHotKey: HotKey?
@@ -48,7 +55,10 @@ final class AppExposeInvoker {
     private(set) var lastInvokeAttempts: [String] = []
     private(set) var lastForcedStrategy: String?
 
-    func invokeApplicationWindows(for bundle: String, requireEvidence: Bool = true) -> AppExposeInvokeResult {
+    @discardableResult
+    func invokeApplicationWindows(for bundle: String,
+                                  requireEvidence: Bool = true,
+                                  completion: @escaping (AppExposeInvokeResult) -> Void) -> AppExposeDispatchReceipt {
         Logger.log("AppExposeInvoker: invokeApplicationWindows called for bundle \(bundle)")
 
         lastResolvedHotKey = nil
@@ -58,9 +68,65 @@ final class AppExposeInvoker {
         lastForcedStrategy = nil
 
         let baselineDockSignature = dockWindowSignatureSnapshot()
-        let outcome = attemptDockNotification(requireEvidence: requireEvidence,
-                                              baselineDockSignature: baselineDockSignature)
-        return finalizeResult(outcome, requireEvidence: requireEvidence)
+        let posted = DockNotificationSender.post(notification: appExposeDockNotification)
+        recordAttempt("dockNotification posted=\(posted)")
+        Logger.log("AppExposeInvoker: attempt=dockNotification(\(appExposeDockNotification)) posted=\(posted)")
+
+        let strategy: AppExposeInvokeStrategy? = posted ? .dockNotification : nil
+        if posted {
+            lastInvokeStrategy = .dockNotification
+        }
+
+        let receipt = AppExposeDispatchReceipt(
+            dispatched: posted,
+            strategy: strategy,
+            attempts: lastInvokeAttempts,
+            frontmostAfterDispatch: NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil"
+        )
+
+        guard posted else {
+            completion(
+                finalizeResult(
+                    AppExposeAttemptOutcome(dispatched: false, evidence: false, strategy: nil),
+                    requireEvidence: requireEvidence
+                )
+            )
+            return receipt
+        }
+
+        guard requireEvidence else {
+            Logger.log("AppExposeInvoker: selected strategy=dockNotification (evidence not required)")
+            completion(
+                finalizeResult(
+                    AppExposeAttemptOutcome(dispatched: true,
+                                            evidence: false,
+                                            strategy: .dockNotification),
+                    requireEvidence: false
+                )
+            )
+            return receipt
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            let evidence = await self.waitForExposeEvidence(baselineDockSignature: baselineDockSignature)
+            self.recordAttempt("dockNotification evidence=\(evidence)")
+            if evidence {
+                Logger.log("AppExposeInvoker: selected strategy=dockNotification")
+            } else {
+                Logger.log("AppExposeInvoker: dock notification posted but no Expose evidence")
+            }
+            completion(
+                self.finalizeResult(
+                    AppExposeAttemptOutcome(dispatched: true,
+                                            evidence: evidence,
+                                            strategy: .dockNotification),
+                    requireEvidence: true
+                )
+            )
+        }
+
+        return receipt
     }
 
     func isApplicationWindowsHotKeyConfigured() -> Bool {
@@ -89,32 +155,14 @@ final class AppExposeInvoker {
                                      frontmostAfter: frontmostAfter)
     }
 
-    private func attemptDockNotification(requireEvidence: Bool,
-                                         baselineDockSignature: Set<DockWindowSignature>) -> AppExposeAttemptOutcome {
-        let posted = DockNotificationSender.post(notification: appExposeDockNotification)
-        recordAttempt("dockNotification posted=\(posted)")
-        Logger.log("AppExposeInvoker: attempt=dockNotification(\(appExposeDockNotification)) posted=\(posted)")
-        guard posted else {
-            return AppExposeAttemptOutcome(dispatched: false, evidence: false, strategy: nil)
-        }
+    private func waitForExposeEvidence(baselineDockSignature: Set<DockWindowSignature>) async -> Bool {
+        for delay in evidenceSampleDelaysNs {
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return false
+            }
 
-        let evidence = waitForExposeEvidence(baselineDockSignature: baselineDockSignature)
-        recordAttempt("dockNotification evidence=\(evidence)")
-        if evidence || !requireEvidence {
-            lastInvokeStrategy = .dockNotification
-            Logger.log("AppExposeInvoker: selected strategy=dockNotification")
-            return AppExposeAttemptOutcome(dispatched: true,
-                                           evidence: evidence,
-                                           strategy: .dockNotification)
-        }
-
-        Logger.log("AppExposeInvoker: dock notification posted but no Expose evidence")
-        return AppExposeAttemptOutcome(dispatched: true, evidence: false, strategy: .dockNotification)
-    }
-
-    private func waitForExposeEvidence(baselineDockSignature: Set<DockWindowSignature>) -> Bool {
-        for delay in evidenceSampleDelaysUs {
-            usleep(delay)
             if isExposeEvidencePresent(baselineDockSignature: baselineDockSignature) {
                 return true
             }
@@ -161,7 +209,6 @@ final class AppExposeInvoker {
         }
         return signatures
     }
-
 }
 
 private enum DockNotificationSender {

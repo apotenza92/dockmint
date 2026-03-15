@@ -1,9 +1,10 @@
 import AppKit
 
 enum StatusBarIcon {
-    static func image(pointSize: CGFloat = 18) -> NSImage {
+    static func image(pointSize: CGFloat = 18, isTemplate: Bool = true) -> NSImage {
         let size = NSSize(width: pointSize, height: pointSize)
         let image = NSImage(size: size, flipped: false) { rect in
+            NSColor.black.setFill()
             NSColor.black.setStroke()
 
             let inset: CGFloat = max(0.65, pointSize * 0.055)
@@ -17,7 +18,7 @@ enum StatusBarIcon {
             drawLeafGlyph(in: glyphRect, lineWidth: 2.0)
             return true
         }
-        image.isTemplate = true
+        image.isTemplate = isTemplate
         return image
     }
 
@@ -62,7 +63,7 @@ enum StatusBarIcon {
             controlPoint2: lucidePoint(16.22, 20.0, in: rect)
         )
         leaf.close()
-        leaf.stroke()
+        leaf.fill()
 
         let vein = newStrokePath(lineWidth: strokeWidth)
         vein.move(to: lucidePoint(2.0, 21.0, in: rect))

@@ -201,8 +201,8 @@ func runDecisionEngineTests() {
         DockDecisionEngine.shouldConsumeActiveClickAction(
             action: .appExpose,
             canRunAppExpose: true
-        ) == true,
-        "active click appExpose should consume when runnable"
+        ) == false,
+        "active click appExpose should stay pass-through when runnable"
     )
 
     expect(

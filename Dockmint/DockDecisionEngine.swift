@@ -113,6 +113,7 @@ enum DockDecisionEngine {
             return true
         case .appExpose:
             _ = canRunAppExpose
+            // App Exposé now always follows the single-click pass-through path.
             return false
         }
     }

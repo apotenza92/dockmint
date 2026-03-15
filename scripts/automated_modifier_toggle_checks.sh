@@ -102,11 +102,8 @@ configure_shift_actions() {
 
   write_pref_string firstClickBehavior activateApp
   write_pref_string firstClickShiftAction "$action"
-  write_pref_string shiftClickAction "$action"
   write_pref_string firstClickOptionAction none
   write_pref_string firstClickShiftOptionAction none
-  write_pref_string optionClickAction none
-  write_pref_string shiftOptionClickAction none
 }
 
 restart_dockmint_with_current_prefs() {
@@ -263,8 +260,6 @@ echo "targetA icon=$TEST_DOCK_ICON_A process=$TEST_PROCESS_A bundle=$TEST_BUNDLE
 echo "targetB icon=$TEST_DOCK_ICON_B process=$TEST_PROCESS_B bundle=$TEST_BUNDLE_B" >>"$LOG_FILE"
 
 run_separated_toggle_case hideOthers shift-hide-others-separated
-run_double_click_toggle_case hideOthers shift-hide-others-double-click
 run_separated_toggle_case hideApp shift-hide-app-separated
-run_double_click_toggle_case hideApp shift-hide-app-double-click
 
 echo "PASS modifier toggle checks artifact_dir=$TEST_ARTIFACT_DIR"

@@ -6,10 +6,22 @@ struct PreferenceKey<Value> {
 }
 
 final class SettingsStore {
+    static var currentDefaultsDomainName: String {
+        defaultsDomainName(for: AppIdentity.bundleIdentifier)
+    }
+
+    static func defaultsDomainName(for bundleIdentifier: String) -> String {
+        AppIdentity.defaultsDomainName(bundleIdentifier: bundleIdentifier)
+    }
+
+    let defaultsDomainName: String
+
     private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         defaultsDomainName: String = SettingsStore.currentDefaultsDomainName) {
         self.defaults = defaults
+        self.defaultsDomainName = defaultsDomainName
     }
 
     func value(for key: PreferenceKey<Bool>) -> Bool {

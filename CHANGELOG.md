@@ -6,6 +6,15 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.2.7]
+
+- Reworked first-run setup into a single-screen onboarding flow with direct permission guidance, weekly background update checks enabled by default, a gated `Finish Setup` action, and a short post-setup menu bar icon confirmation instead of dropping new installs straight into Settings.
+- Simplified app icon behavior around a single-click model: App Actions now center on `Click`, shipped app defaults use `App Exposé (>1 window only)` for no-modifier click, `Hide Others` for Shift-click, `Hide Current, Activate Clicked` for Option-click, and no default app-icon scroll actions.
+- Improved App Exposé responsiveness and reliability on the shipped click path by making both inactive first-click and active-app single-click triggers zero added delay, removing the ultra-fast dismiss grace hold, and hardening same-app dismiss / tracking behavior during rapid Dock interaction.
+- Cleaned up Settings and app presentation with the new onboarding window, reduced development-build-only messaging to the essentials, refreshed current-facing action labels/copy, and updated the filled menu bar leaf icon.
+- Separated development identity behavior from release installs more cleanly, including safer instance management, launch handling, settings-opening behavior, and persistent log locations under `~/Library/Logs/Dockmint` / `~/Library/Logs/Dockmint Dev`.
+- Refreshed automated coverage for the modern interaction model with new default-install, click-behavior, Dock context-menu guard, settings-open stability, and App Exposé stress checks while removing stale double-click-focused suites.
+
 ## [v0.2.6]
 
 - Made Dock icon double-click actions run only on a real macOS double click, so single clicks on an already-frontmost app no longer trigger the mapped double-click action.

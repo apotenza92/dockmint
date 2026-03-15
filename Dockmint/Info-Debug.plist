@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleDisplayName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>pzc.Dockmint.dev.url</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dockmint-dev</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>Dockmint needs Accessibility access to detect Dock gestures and manage app windows.</string>
+	<key>SUFeedURL</key>
+	<string>$(SU_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>zM3fwyZrb6uCBvOIv8Smh91DRMyrKVQPbWBGpkCcgDI=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+</dict>
+</plist>

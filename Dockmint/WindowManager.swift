@@ -22,9 +22,98 @@ enum WindowManager {
         let isMinimized: Bool
     }
 
+    private struct WindowQueryCacheEntry<Value> {
+        let value: Value
+        let expiresAt: Date
+    }
+
+    private final class WindowQueryCacheObserver {
+        private var observers: [NSObjectProtocol] = []
+
+        init() {
+            let center = NSWorkspace.shared.notificationCenter
+            let invalidateForBundle: (Notification) -> Void = { notification in
+                let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                WindowManager.invalidateWindowQueryCache(bundleIdentifier: app?.bundleIdentifier)
+            }
+
+            observers.append(center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
+                                                object: nil,
+                                                queue: .main,
+                                                using: invalidateForBundle))
+            observers.append(center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
+                                                object: nil,
+                                                queue: .main,
+                                                using: invalidateForBundle))
+            observers.append(center.addObserver(forName: NSWorkspace.didHideApplicationNotification,
+                                                object: nil,
+                                                queue: .main,
+                                                using: invalidateForBundle))
+            observers.append(center.addObserver(forName: NSWorkspace.didUnhideApplicationNotification,
+                                                object: nil,
+                                                queue: .main,
+                                                using: invalidateForBundle))
+            observers.append(center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+                                                object: nil,
+                                                queue: .main,
+                                                using: invalidateForBundle))
+            observers.append(center.addObserver(forName: NSWorkspace.didDeactivateApplicationNotification,
+                                                object: nil,
+                                                queue: .main,
+                                                using: invalidateForBundle))
+        }
+    }
+
+    private static let windowQueryCacheTTL: TimeInterval = 0.15
+    private static let windowQueryCacheLock = NSLock()
+    private static var totalWindowCountCache: [String: WindowQueryCacheEntry<Int>] = [:]
+    private static var hasVisibleWindowsCache: [String: WindowQueryCacheEntry<Bool>] = [:]
+    private static let windowQueryCacheObserver = WindowQueryCacheObserver()
+
+    static func invalidateWindowQueryCache(bundleIdentifier: String? = nil) {
+        _ = windowQueryCacheObserver
+        windowQueryCacheLock.lock()
+        defer { windowQueryCacheLock.unlock() }
+
+        if let bundleIdentifier {
+            totalWindowCountCache.removeValue(forKey: bundleIdentifier)
+            hasVisibleWindowsCache.removeValue(forKey: bundleIdentifier)
+            return
+        }
+
+        totalWindowCountCache.removeAll()
+        hasVisibleWindowsCache.removeAll()
+    }
+
+    private static func cachedWindowQueryValue<Value>(
+        for bundleIdentifier: String,
+        cache: inout [String: WindowQueryCacheEntry<Value>],
+        compute: () -> Value
+    ) -> Value {
+        _ = windowQueryCacheObserver
+        let now = Date()
+
+        windowQueryCacheLock.lock()
+        if let entry = cache[bundleIdentifier], entry.expiresAt > now {
+            let value = entry.value
+            windowQueryCacheLock.unlock()
+            return value
+        }
+        windowQueryCacheLock.unlock()
+
+        let value = compute()
+
+        windowQueryCacheLock.lock()
+        cache[bundleIdentifier] = WindowQueryCacheEntry(value: value,
+                                                        expiresAt: now.addingTimeInterval(windowQueryCacheTTL))
+        windowQueryCacheLock.unlock()
+        return value
+    }
+
     @discardableResult
     static func activate(_ app: NSRunningApplication) -> Bool {
-        app.activate()
+        invalidateWindowQueryCache(bundleIdentifier: app.bundleIdentifier)
+        return app.activate()
     }
 
     /// Hide all windows of an app (Cmd+H equivalent)
@@ -33,6 +122,7 @@ enum WindowManager {
             Logger.log("WindowManager: App \(bundleIdentifier) is not running")
             return false
         }
+        defer { invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier) }
 
         // First try the direct NSRunningApplication hide.
         let hideRequested = app.hide()
@@ -89,6 +179,7 @@ enum WindowManager {
             Logger.log("WindowManager: App \(bundleIdentifier) is not running, cannot unhide")
             return false
         }
+        defer { invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier) }
         app.unhide()
         _ = activate(app)
         Logger.log("WindowManager: Unhid and activated \(bundleIdentifier)")
@@ -106,6 +197,7 @@ enum WindowManager {
             Logger.log("WindowManager: App \(bundleIdentifier) is not running")
             return false
         }
+        defer { invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier) }
         
         if app.isHidden {
             app.unhide()
@@ -138,6 +230,7 @@ enum WindowManager {
             Logger.log("WindowManager: App \(bundleIdentifier) is not running")
             return false
         }
+        defer { invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier) }
         
         let windowsArray = currentSpaceStandardWindows(for: app)
         guard !windowsArray.isEmpty else {
@@ -186,42 +279,47 @@ enum WindowManager {
         return true
     }
     
-    /// Check if an app has visible windows
+    /// Check if an app has visible windows.
     static func hasVisibleWindows(bundleIdentifier: String) -> Bool {
-        guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
+        cachedWindowQueryValue(for: bundleIdentifier,
+                               cache: &hasVisibleWindowsCache) {
+            guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
+                return false
+            }
+
+            let windowsArray = currentSpaceStandardWindows(for: app)
+            guard !windowsArray.isEmpty else {
+                return false
+            }
+
+            for window in windowsArray {
+                if isWindowMinimized(window) {
+                    continue
+                }
+
+                var hiddenValue: CFTypeRef?
+                if AXUIElementCopyAttributeValue(window, kAXHiddenAttribute as CFString, &hiddenValue) == .success,
+                   let isHidden = hiddenValue as? Bool, isHidden {
+                    continue
+                }
+
+                return true
+            }
+
             return false
         }
-        
-        let windowsArray = currentSpaceStandardWindows(for: app)
-        guard !windowsArray.isEmpty else {
-            return false
-        }
-        
-        for window in windowsArray {
-            if isWindowMinimized(window) {
-                continue // Skip minimized windows
-            }
-            
-            var hiddenValue: CFTypeRef?
-            if AXUIElementCopyAttributeValue(window, kAXHiddenAttribute as CFString, &hiddenValue) == .success,
-               let isHidden = hiddenValue as? Bool, isHidden {
-                continue // Skip hidden windows
-            }
-            
-            // Found at least one visible, non-minimized window
-            return true
-        }
-        
-        return false
     }
 
     /// Count all AX windows currently reported by the application.
     static func totalWindowCount(bundleIdentifier: String) -> Int {
-        guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
-            return 0
-        }
+        cachedWindowQueryValue(for: bundleIdentifier,
+                               cache: &totalWindowCountCache) {
+            guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
+                return 0
+            }
 
-        return globalStandardWindows(for: app).count
+            return globalStandardWindows(for: app).count
+        }
     }
 
     /// True when the app currently reports at least two windows.
@@ -261,11 +359,13 @@ enum WindowManager {
             Logger.log("WindowManager: App \(bundleIdentifier) is not running, cannot activate")
             return false
         }
+        defer { invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier) }
         
         _ = activate(app)
         
-        // Wait a moment for app to activate, then show main window
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        // Let activation settle briefly, then re-assert the main window without the older
+        // extra latency that used to mask app-click coordination delays.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
             if let mainWindow = getMainWindow(bundleIdentifier: bundleIdentifier) {
                 var position: CFTypeRef?
                 if AXUIElementCopyAttributeValue(mainWindow, kAXPositionAttribute as CFString, &position) == .success {
@@ -286,6 +386,7 @@ enum WindowManager {
             Logger.log("WindowManager: App \(bundleIdentifier) is not running, cannot quit")
             return false
         }
+        defer { invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier) }
 
         let terminateRequested = app.terminate()
         if waitForTermination(app, timeout: 0.8) {
@@ -310,6 +411,7 @@ enum WindowManager {
             Logger.log("WindowManager: App \(bundleIdentifier) is not running")
             return false
         }
+        defer { invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier) }
         
         let windows = currentSpaceStandardWindows(for: app)
         guard !windows.isEmpty else {
@@ -343,6 +445,7 @@ enum WindowManager {
             Logger.log("WindowManager: App \(bundleIdentifier) is not running")
             return false
         }
+        defer { invalidateWindowQueryCache() }
         
         // Activate target app first (and unhide if needed)
         if app.isHidden {
@@ -378,6 +481,7 @@ enum WindowManager {
     
     /// Show all apps (inverse of Hide Others)
     static func showAllApplications() -> Bool {
+        defer { invalidateWindowQueryCache() }
         let apps = NSWorkspace.shared.runningApplications.filter { !$0.isTerminated }
         var changed = false
         for app in apps {

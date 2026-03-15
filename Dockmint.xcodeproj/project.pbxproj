@@ -8,6 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		3753B064E9EE87BADBB34AAC /* Dockmint.app in Frameworks */ = {isa = PBXBuildFile; fileRef = FA12B1922EFF98EC00DB8333 /* Dockmint.app */; };
+		A4D9F3C41E2B7A6C8D5E0011 /* DockmintTests/PreferencesDefaultsXCTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4D9F3C41E2B7A6C8D5E0010 /* DockmintTests/PreferencesDefaultsXCTest.swift */; };
+		B1C2D3E4F5A60718293A4B5A /* DockmintTests/AppIdentityXCTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A60718293A4B59 /* DockmintTests/AppIdentityXCTest.swift */; };
+		B1C2D3E4F5A60718293A4B5C /* DockmintTests/PreferencesMigrationXCTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A60718293A4B5B /* DockmintTests/PreferencesMigrationXCTest.swift */; };
+		B1C2D3E4F5A60718293A4B5E /* DockmintTests/LaunchBehaviorXCTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A60718293A4B5D /* DockmintTests/LaunchBehaviorXCTest.swift */; };
+		B1C2D3E4F5A60718293A4B60 /* Dockmint/LaunchBehavior.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A60718293A4B5F /* Dockmint/LaunchBehavior.swift */; };
 		C374E4A29F47ED49B09150A8 /* DockmintTests/DockDecisionEngineXCTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93451BA79642D3FDADF60039 /* DockmintTests/DockDecisionEngineXCTest.swift */; };
 		C81A4BB45E8C4C31A4D94011 /* DockmintTests/DockFolderActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C81A4BB35E8C4C31A4D94011 /* DockmintTests/DockFolderActionTests.swift */; };
 		D1E2F3A4B5C60718293A4B5C /* Dockmint/DockDecisionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6978877665544 /* Dockmint/DockDecisionEngine.swift */; };
@@ -34,6 +39,11 @@
 /* Begin PBXFileReference section */
 		1D80AE08BC0FDB992139A0CF /* DockmintTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DockmintTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		93451BA79642D3FDADF60039 /* DockmintTests/DockDecisionEngineXCTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DockmintTests/DockDecisionEngineXCTest.swift; sourceTree = "<group>"; };
+		A4D9F3C41E2B7A6C8D5E0010 /* DockmintTests/PreferencesDefaultsXCTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DockmintTests/PreferencesDefaultsXCTest.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A60718293A4B59 /* DockmintTests/AppIdentityXCTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DockmintTests/AppIdentityXCTest.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A60718293A4B5B /* DockmintTests/PreferencesMigrationXCTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DockmintTests/PreferencesMigrationXCTest.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A60718293A4B5D /* DockmintTests/LaunchBehaviorXCTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DockmintTests/LaunchBehaviorXCTest.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A60718293A4B5F /* Dockmint/LaunchBehavior.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Dockmint/LaunchBehavior.swift; sourceTree = "<group>"; };
 		C81A4BB35E8C4C31A4D94011 /* DockmintTests/DockFolderActionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DockmintTests/DockFolderActionTests.swift; sourceTree = "<group>"; };
 		D7A1C2234F1B4D4A91C4A002 /* Dockmint/DockHitTest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Dockmint/DockHitTest.swift; sourceTree = "<group>"; };
 		D9A2B3C4D5E6F708192A3B4D /* Dockmint/AppIdentity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Dockmint/AppIdentity.swift; sourceTree = "<group>"; };
@@ -50,6 +60,7 @@
 		FA12B1CA2EFF9E7F00DB8333 /* Exceptions for "Dockmint" folder in "Dockmint" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Info-Debug.plist,
 				Info.plist,
 			);
 			target = FA12B1912EFF98EC00DB8333 /* Dockmint */;
@@ -92,6 +103,10 @@
 			isa = PBXGroup;
 			children = (
 				93451BA79642D3FDADF60039 /* DockmintTests/DockDecisionEngineXCTest.swift */,
+				A4D9F3C41E2B7A6C8D5E0010 /* DockmintTests/PreferencesDefaultsXCTest.swift */,
+				B1C2D3E4F5A60718293A4B59 /* DockmintTests/AppIdentityXCTest.swift */,
+				B1C2D3E4F5A60718293A4B5B /* DockmintTests/PreferencesMigrationXCTest.swift */,
+				B1C2D3E4F5A60718293A4B5D /* DockmintTests/LaunchBehaviorXCTest.swift */,
 				C81A4BB35E8C4C31A4D94011 /* DockmintTests/DockFolderActionTests.swift */,
 				D7A1C2234F1B4D4A91C4A002 /* Dockmint/DockHitTest.swift */,
 				D9A2B3C4D5E6F708192A3B4D /* Dockmint/AppIdentity.swift */,
@@ -99,6 +114,7 @@
 				D9A2B3C4D5E6F708192A3B4F /* Dockmint/Preferences.swift */,
 				D9A2B3C4D5E6F708192A3B51 /* Dockmint/SettingsStore.swift */,
 				D7A1C2234F1B4D4A91C4A004 /* Dockmint/Logger.swift */,
+				B1C2D3E4F5A60718293A4B5F /* Dockmint/LaunchBehavior.swift */,
 				F1E2D3C4B5A6978877665544 /* Dockmint/DockDecisionEngine.swift */,
 			);
 			name = DockmintTests;
@@ -243,6 +259,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A4D9F3C41E2B7A6C8D5E0011 /* DockmintTests/PreferencesDefaultsXCTest.swift in Sources */,
+				B1C2D3E4F5A60718293A4B5A /* DockmintTests/AppIdentityXCTest.swift in Sources */,
+				B1C2D3E4F5A60718293A4B5C /* DockmintTests/PreferencesMigrationXCTest.swift in Sources */,
+				B1C2D3E4F5A60718293A4B5E /* DockmintTests/LaunchBehaviorXCTest.swift in Sources */,
 				C374E4A29F47ED49B09150A8 /* DockmintTests/DockDecisionEngineXCTest.swift in Sources */,
 				C81A4BB45E8C4C31A4D94011 /* DockmintTests/DockFolderActionTests.swift in Sources */,
 				D7A1C2234F1B4D4A91C4A001 /* Dockmint/DockHitTest.swift in Sources */,
@@ -251,6 +271,7 @@
 				D9A2B3C4D5E6F708192A3B4E /* Dockmint/Preferences.swift in Sources */,
 				D9A2B3C4D5E6F708192A3B50 /* Dockmint/SettingsStore.swift in Sources */,
 				D7A1C2234F1B4D4A91C4A003 /* Dockmint/Logger.swift in Sources */,
+				B1C2D3E4F5A60718293A4B60 /* Dockmint/LaunchBehavior.swift in Sources */,
 				D1E2F3A4B5C60718293A4B5C /* Dockmint/DockDecisionEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -437,16 +458,16 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Dockmint/Info.plist;
+				INFOPLIST_FILE = Dockmint/Info-Debug.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.2.6;
-				PRODUCT_BUNDLE_IDENTIFIER = pzc.Dockter;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				MARKETING_VERSION = 0.2.7;
+				PRODUCT_BUNDLE_IDENTIFIER = pzc.Dockmint.dev;
+				PRODUCT_NAME = "Dockmint Dev";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SU_FEED_URL = "https://raw.githubusercontent.com/apotenza92/dockmint/main/appcasts/stable-arm64.xml";
@@ -479,8 +500,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.2.6;
-				PRODUCT_BUNDLE_IDENTIFIER = pzc.Dockter;
+				MARKETING_VERSION = 0.2.7;
+				PRODUCT_BUNDLE_IDENTIFIER = pzc.Dockmint;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

@@ -29,6 +29,15 @@ final class DockDecisionEngineXCTest: XCTestCase {
         XCTAssertTrue(DockDecisionEngine.shouldRunFirstClickAppExpose(windowCount: 2, requiresMultipleWindows: true))
     }
 
+    func testShippedDefaultAppExposeDecisionMatrix() {
+        // Shipped defaults use a single-click App Exposé path gated to multiple windows.
+        XCTAssertFalse(DockDecisionEngine.shouldRunFirstClickAppExpose(windowCount: 0, requiresMultipleWindows: true))
+        XCTAssertFalse(DockDecisionEngine.shouldRunFirstClickAppExpose(windowCount: 1, requiresMultipleWindows: true))
+        XCTAssertTrue(DockDecisionEngine.shouldRunFirstClickAppExpose(windowCount: 2, requiresMultipleWindows: true))
+        XCTAssertFalse(DockDecisionEngine.shouldConsumeActiveClickAction(action: .appExpose, canRunAppExpose: true))
+        XCTAssertFalse(DockDecisionEngine.shouldConsumeActiveClickAction(action: .appExpose, canRunAppExpose: false))
+    }
+
     func testAppExposeInvocationConfirmationRules() {
         XCTAssertFalse(
             DockDecisionEngine.appExposeInvocationConfirmed(

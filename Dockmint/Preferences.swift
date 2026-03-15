@@ -25,7 +25,7 @@ enum DockAction: String, CaseIterable, Codable {
         case .quitApp: return "Quit App"
         case .bringAllToFront: return "Bring All to Front"
         case .hideOthers: return "Hide Others"
-        case .singleAppMode: return "Single App Mode"
+        case .singleAppMode: return "Hide Current, Activate Clicked"
         }
     }
 }
@@ -503,7 +503,7 @@ enum FirstClickBehavior: String, CaseIterable, Codable {
     var displayName: String {
         switch self {
         case .activateApp: return "Activate App"
-        case .bringAllToFront: return "Bring All to Front"
+        case .bringAllToFront: return "Activate App"
         case .appExpose: return "App Exposé"
         }
     }
@@ -557,6 +557,51 @@ enum UpdateCheckFrequency: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+enum OnboardingMilestone: String, CaseIterable, Codable, Identifiable {
+    case notStarted
+    case permissions
+    case loginItem
+    case privacy
+    case tips
+    case completed
+
+    var id: String { rawValue }
+
+    var isCompleted: Bool {
+        self == .completed
+    }
+
+    var next: OnboardingMilestone {
+        switch self {
+        case .notStarted:
+            return .permissions
+        case .permissions:
+            return .loginItem
+        case .loginItem:
+            return .privacy
+        case .privacy:
+            return .tips
+        case .tips, .completed:
+            return .completed
+        }
+    }
+
+    var previous: OnboardingMilestone {
+        switch self {
+        case .notStarted, .permissions:
+            return .notStarted
+        case .loginItem:
+            return .permissions
+        case .privacy:
+            return .loginItem
+        case .tips:
+            return .privacy
+        case .completed:
+            return .tips
+        }
+    }
+}
+
 enum AppExposeSlotSource: String {
     case click
     case firstClick
@@ -583,10 +628,24 @@ enum AppExposeSlotKey {
 
 @MainActor
 final class Preferences: ObservableObject {
+    struct LoginItemClient {
+        var status: () -> SMAppService.Status
+        var register: () throws -> Void
+        var unregister: () throws -> Void
+
+        static let live = LoginItemClient(
+            status: { SMAppService.mainApp.status },
+            register: { try SMAppService.mainApp.register() },
+            unregister: { try SMAppService.mainApp.unregister() }
+        )
+    }
+
     static let shared = Preferences()
 
     private let userDefaults: UserDefaults
     private let settingsStore: SettingsStore
+    private let bundleIdentifier: String
+    private let loginItemClient: LoginItemClient
     private let loginItemRepairKey = "dockmintLoginItemRepairAttempted_v1"
     private let clickActionKey = "clickAction"
     private let shiftClickActionKey = "shiftClickAction"
@@ -618,9 +677,13 @@ final class Preferences: ObservableObject {
     private let showOnStartupKey = "showOnStartup"
     private let showMenuBarIconKey = "showMenuBarIcon"
     private let firstLaunchCompletedKey = "firstLaunchCompleted"
+    private let onboardingStateKey = "onboardingState"
     private let startAtLoginKey = "startAtLogin"
+    private let backgroundUpdateChecksEnabledKey = "backgroundUpdateChecksEnabled"
     private let updateCheckFrequencyKey = "updateCheckFrequency"
+    private let persistentDiagnosticFileLoggingEnabledKey = "persistentDiagnosticFileLoggingEnabled"
     private let lastUpdateCheckTimestampKey = "lastUpdateCheckTimestamp"
+    private let onboardingPrivacyMigrationKey = "onboardingPrivacyMigration_v1"
     private let firstClickBehaviorKey = "firstClickBehavior"
     private let firstClickShiftActionKey = "firstClickShiftAction"
     private let firstClickOptionActionKey = "firstClickOptionAction"
@@ -631,26 +694,158 @@ final class Preferences: ObservableObject {
     private let firstClickModifierActionsMigratedKey = "firstClickModifierActionsMigrated_v6"
     private let appExposeRequiresMultipleWindowsMapMigratedKey = "appExposeRequiresMultipleWindowsMapMigrated_v7"
     private let folderClickDefaultMigratedKey = "folderClickDefaultMigrated_v8"
+    private let deprecatedBringAllToFrontMigratedKey = "deprecatedBringAllToFrontMigrated_v9"
+    private let obsoleteAppClickActionsMigratedKey = "obsoleteAppClickActionsMigrated_v10"
 
-    static let defaultFolderClickAction = DockFolderAction(
-        openInApplicationIdentifier: DockFolderOpenApplicationCatalog.dockIdentifier,
-        view: .automatic,
-        sortBy: .none,
-        groupBy: .none
+    struct GeneralDefaults {
+        let showMenuBarIcon: Bool
+        let showOnStartup: Bool
+        let firstLaunchCompleted: Bool
+        let onboardingState: OnboardingMilestone
+        let backgroundUpdateChecksEnabled: Bool
+        let updateCheckFrequency: UpdateCheckFrequency
+        let persistentDiagnosticFileLoggingEnabled: Bool
+    }
+
+    struct AppActionDefaults {
+        let firstClickBehavior: FirstClickBehavior
+        let clickAction: DockAction
+        let firstClickAppExposeRequiresMultipleWindows: Bool
+        let clickAppExposeRequiresMultipleWindows: Bool
+        let appExposeRequiresMultipleWindowsMap: [String: Bool]
+    }
+
+    struct ModifierDefaults {
+        let firstClickShiftAction: DockAction
+        let firstClickOptionAction: DockAction
+        let firstClickShiftOptionAction: DockAction
+        let shiftClickAction: DockAction
+        let optionClickAction: DockAction
+        let shiftOptionClickAction: DockAction
+        let scrollUpAction: DockAction
+        let shiftScrollUpAction: DockAction
+        let optionScrollUpAction: DockAction
+        let shiftOptionScrollUpAction: DockAction
+        let scrollDownAction: DockAction
+        let shiftScrollDownAction: DockAction
+        let optionScrollDownAction: DockAction
+        let shiftOptionScrollDownAction: DockAction
+    }
+
+    struct FolderDefaults {
+        let click: DockFolderAction
+        let shiftClick: DockFolderAction
+        let optionClick: DockFolderAction
+        let shiftOptionClick: DockFolderAction
+        let scrollUp: DockFolderAction
+        let shiftScrollUp: DockFolderAction
+        let optionScrollUp: DockFolderAction
+        let shiftOptionScrollUp: DockFolderAction
+        let scrollDown: DockFolderAction
+        let shiftScrollDown: DockFolderAction
+        let optionScrollDown: DockFolderAction
+        let shiftOptionScrollDown: DockFolderAction
+    }
+
+    static let shippedGeneralDefaults = GeneralDefaults(
+        showMenuBarIcon: true,
+        showOnStartup: false,
+        firstLaunchCompleted: false,
+        onboardingState: .notStarted,
+        backgroundUpdateChecksEnabled: true,
+        updateCheckFrequency: .weekly,
+        persistentDiagnosticFileLoggingEnabled: false
     )
 
-    private static let legacyDefaultFolderClickAction = DockFolderAction(
-        openInApplicationIdentifier: DockFolderOpenApplicationCatalog.dockIdentifier,
-        view: .automatic,
-        sortBy: .none,
-        groupBy: .none
+    static let shippedAppActionDefaults = AppActionDefaults(
+        firstClickBehavior: .appExpose,
+        clickAction: .none,
+        firstClickAppExposeRequiresMultipleWindows: true,
+        clickAppExposeRequiresMultipleWindows: false,
+        appExposeRequiresMultipleWindowsMap: Preferences.defaultAppExposeRequiresMultipleWindowsMap(
+            firstClickDefault: true,
+            activeAppDefault: false
+        )
     )
 
-    private static let showOnStartupPreferenceKey = PreferenceKey<Bool>(name: "showOnStartup", defaultValue: false)
-    private static let showMenuBarIconPreferenceKey = PreferenceKey<Bool>(name: "showMenuBarIcon", defaultValue: true)
-    private static let firstLaunchCompletedPreferenceKey = PreferenceKey<Bool>(name: "firstLaunchCompleted", defaultValue: false)
-    private static let updateCheckFrequencyPreferenceKey = PreferenceKey<UpdateCheckFrequency>(name: "updateCheckFrequency", defaultValue: .weekly)
-    private static let firstClickBehaviorPreferenceKey = PreferenceKey<FirstClickBehavior>(name: "firstClickBehavior", defaultValue: .appExpose)
+    static let shippedModifierDefaults = ModifierDefaults(
+        firstClickShiftAction: .hideOthers,
+        firstClickOptionAction: .singleAppMode,
+        firstClickShiftOptionAction: .none,
+        shiftClickAction: .none,
+        optionClickAction: .none,
+        shiftOptionClickAction: .none,
+        scrollUpAction: .none,
+        shiftScrollUpAction: .none,
+        optionScrollUpAction: .none,
+        shiftOptionScrollUpAction: .none,
+        scrollDownAction: .none,
+        shiftScrollDownAction: .none,
+        optionScrollDownAction: .none,
+        shiftOptionScrollDownAction: .none
+    )
+
+    static let shippedFolderDefaults = FolderDefaults(
+        click: DockFolderAction(
+            openInApplicationIdentifier: DockFolderOpenApplicationCatalog.dockIdentifier,
+            view: .automatic,
+            sortBy: .none,
+            groupBy: .none
+        ),
+        shiftClick: .none,
+        optionClick: DockFolderAction(
+            openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
+            view: .automatic,
+            sortBy: .none,
+            groupBy: .none
+        ),
+        shiftOptionClick: .none,
+        scrollUp: .none,
+        shiftScrollUp: .none,
+        optionScrollUp: .none,
+        shiftOptionScrollUp: .none,
+        scrollDown: .none,
+        shiftScrollDown: .none,
+        optionScrollDown: .none,
+        shiftOptionScrollDown: .none
+    )
+
+    static let defaultFolderClickAction = shippedFolderDefaults.click
+
+    private static let legacyDefaultFolderClickAction = defaultFolderClickAction
+
+    private static let showOnStartupPreferenceKey = PreferenceKey<Bool>(
+        name: "showOnStartup",
+        defaultValue: shippedGeneralDefaults.showOnStartup
+    )
+    private static let showMenuBarIconPreferenceKey = PreferenceKey<Bool>(
+        name: "showMenuBarIcon",
+        defaultValue: shippedGeneralDefaults.showMenuBarIcon
+    )
+    private static let firstLaunchCompletedPreferenceKey = PreferenceKey<Bool>(
+        name: "firstLaunchCompleted",
+        defaultValue: shippedGeneralDefaults.firstLaunchCompleted
+    )
+    private static let onboardingStatePreferenceKey = PreferenceKey<OnboardingMilestone>(
+        name: "onboardingState",
+        defaultValue: shippedGeneralDefaults.onboardingState
+    )
+    private static let backgroundUpdateChecksEnabledPreferenceKey = PreferenceKey<Bool>(
+        name: "backgroundUpdateChecksEnabled",
+        defaultValue: shippedGeneralDefaults.backgroundUpdateChecksEnabled
+    )
+    private static let updateCheckFrequencyPreferenceKey = PreferenceKey<UpdateCheckFrequency>(
+        name: "updateCheckFrequency",
+        defaultValue: shippedGeneralDefaults.updateCheckFrequency
+    )
+    private static let persistentDiagnosticFileLoggingEnabledPreferenceKey = PreferenceKey<Bool>(
+        name: "persistentDiagnosticFileLoggingEnabled",
+        defaultValue: shippedGeneralDefaults.persistentDiagnosticFileLoggingEnabled
+    )
+    private static let firstClickBehaviorPreferenceKey = PreferenceKey<FirstClickBehavior>(
+        name: "firstClickBehavior",
+        defaultValue: shippedAppActionDefaults.firstClickBehavior
+    )
     private static let lastUpdateCheckTimestampPreferenceKey = PreferenceKey<Double>(name: "lastUpdateCheckTimestamp", defaultValue: 0)
 
     // Prevent feedback loop when we adjust login item after a failed toggle.
@@ -686,7 +881,8 @@ final class Preferences: ObservableObject {
 
     /// Per-slot ">1 window" gate for modifier rows and scroll rows.
     /// Keys follow the pattern "<source>_<modifier>", e.g. "firstClick_shift", "scrollUp_none".
-    /// The no-modifier first-click and double-click slots are stored in their own legacy keys above.
+    /// The no-modifier first-click slot still uses its dedicated legacy key above; obsolete app-click
+    /// slots are retained only for migration/reset cleanup compatibility.
     @Published var appExposeRequiresMultipleWindowsMap: [String: Bool] {
         didSet {
             userDefaults.set(appExposeRequiresMultipleWindowsMap, forKey: appExposeRequiresMultipleWindowsMapKey)
@@ -885,68 +1081,197 @@ final class Preferences: ObservableObject {
         }
     }
 
+    @Published var onboardingState: OnboardingMilestone {
+        didSet {
+            settingsStore.set(onboardingState, for: Self.onboardingStatePreferenceKey)
+            if onboardingState.isCompleted && !firstLaunchCompleted {
+                firstLaunchCompleted = true
+            }
+        }
+    }
+
+    @Published var backgroundUpdateChecksEnabled: Bool {
+        didSet {
+            settingsStore.set(backgroundUpdateChecksEnabled, for: Self.backgroundUpdateChecksEnabledPreferenceKey)
+            if backgroundUpdateChecksEnabled && updateCheckFrequency == .never {
+                updateCheckFrequency = .weekly
+            }
+            if !backgroundUpdateChecksEnabled && updateCheckFrequency != .never {
+                updateCheckFrequency = .never
+            }
+        }
+    }
+
     @Published var startAtLogin: Bool {
         didSet {
             guard !applyingLoginItemChange else { return }
+
+            guard AppIdentity.supportsLoginItem(bundleIdentifier: bundleIdentifier) else {
+                if startAtLogin {
+                    applyingLoginItemChange = true
+                    startAtLogin = false
+                    applyingLoginItemChange = false
+                }
+                userDefaults.set(false, forKey: startAtLoginKey)
+                return
+            }
+
             applyingLoginItemChange = true
+            defer { applyingLoginItemChange = false }
+
             do {
                 if startAtLogin {
-                    try SMAppService.mainApp.register()
+                    try loginItemClient.register()
                 } else {
-                    try SMAppService.mainApp.unregister()
+                    try loginItemClient.unregister()
                 }
                 userDefaults.set(startAtLogin, forKey: startAtLoginKey)
             } catch {
                 Logger.log("Failed to update login item state: \(error.localizedDescription)")
                 // Revert to actual system state to keep UI truthful
-                let enabled = SMAppService.mainApp.status == .enabled
+                let enabled = loginItemClient.status() == .enabled
                 startAtLogin = enabled
                 userDefaults.set(enabled, forKey: startAtLoginKey)
             }
-            applyingLoginItemChange = false
         }
     }
 
     @Published var updateCheckFrequency: UpdateCheckFrequency {
         didSet {
             settingsStore.set(updateCheckFrequency, for: Self.updateCheckFrequencyPreferenceKey)
+            if updateCheckFrequency == .never {
+                if backgroundUpdateChecksEnabled {
+                    backgroundUpdateChecksEnabled = false
+                }
+            } else if !backgroundUpdateChecksEnabled {
+                backgroundUpdateChecksEnabled = true
+            }
         }
+    }
+
+    @Published var persistentDiagnosticFileLoggingEnabled: Bool {
+        didSet {
+            settingsStore.set(
+                persistentDiagnosticFileLoggingEnabled,
+                for: Self.persistentDiagnosticFileLoggingEnabledPreferenceKey
+            )
+        }
+    }
+
+    var isOnboardingCompleted: Bool {
+        onboardingState.isCompleted
+    }
+
+    var shouldPresentOnboarding: Bool {
+        !isOnboardingCompleted
     }
 
     private init(userDefaults: UserDefaults = .standard,
                  settingsStore: SettingsStore? = nil,
-                 applyLoginItemRepair: Bool = true) {
+                 applyLoginItemRepair: Bool = true,
+                 bundleIdentifier: String? = nil,
+                 loginItemClient: LoginItemClient? = nil) {
+        let resolvedBundleIdentifier = bundleIdentifier ?? AppIdentity.bundleIdentifier
+        let resolvedLoginItemClient = loginItemClient ?? .live
+
         self.userDefaults = userDefaults
-        Self.migrateLegacyDefaultsDomainIfNeeded(defaults: userDefaults)
-        self.settingsStore = settingsStore ?? SettingsStore(defaults: userDefaults)
+        self.bundleIdentifier = resolvedBundleIdentifier
+        self.loginItemClient = resolvedLoginItemClient
+        Self.migrateLegacyDefaultsDomainIfNeeded(defaults: userDefaults, bundleIdentifier: resolvedBundleIdentifier)
+        self.settingsStore = settingsStore ?? SettingsStore(defaults: userDefaults,
+                                                            defaultsDomainName: SettingsStore.defaultsDomainName(for: resolvedBundleIdentifier))
         Self.applyFolderClickDefaultMigrationIfNeeded(defaults: userDefaults,
                                                       migrationKey: folderClickDefaultMigratedKey,
                                                       actionKey: folderClickActionKey)
 
-        // Load base mappings from UserDefaults or use defaults.
-        var clickAction: DockAction
-        if let clickRaw = userDefaults.string(forKey: clickActionKey),
-           let click = DockAction(rawValue: clickRaw) {
-            clickAction = click
-        } else {
-            clickAction = .appExpose
+        let generalDefaults = Self.shippedGeneralDefaults
+        let appActionDefaults = Self.shippedAppActionDefaults
+        let modifierDefaults = Self.shippedModifierDefaults
+        let folderDefaults = Self.shippedFolderDefaults
+
+        if !userDefaults.bool(forKey: onboardingPrivacyMigrationKey) {
+            let legacyFirstLaunchCompleted = userDefaults.object(forKey: firstLaunchCompletedKey) as? Bool
+            let hasStoredOnboardingState = userDefaults.object(forKey: onboardingStateKey) != nil
+            if !hasStoredOnboardingState {
+                let migratedOnboardingState: OnboardingMilestone = legacyFirstLaunchCompleted == true
+                    ? .completed
+                    : generalDefaults.onboardingState
+                userDefaults.set(migratedOnboardingState.rawValue, forKey: onboardingStateKey)
+            }
+
+            let storedUpdateFrequencyRaw = userDefaults.string(forKey: updateCheckFrequencyKey)
+            let storedUpdateFrequency = storedUpdateFrequencyRaw.flatMap(UpdateCheckFrequency.init(rawValue:))
+            let hasStoredUpdateConsent = userDefaults.object(forKey: backgroundUpdateChecksEnabledKey) != nil
+            if !hasStoredUpdateConsent {
+                let migratedUpdateConsent: Bool
+                let migratedUpdateFrequency: UpdateCheckFrequency
+
+                switch storedUpdateFrequency {
+                case .some(.weekly):
+                    // Legacy `.weekly` was the shipped default before update checks became opt-in.
+                    // Treat that exact value as untouched legacy default and move the user to opt-in mode.
+                    migratedUpdateConsent = false
+                    migratedUpdateFrequency = .never
+                case .some(.never):
+                    migratedUpdateConsent = false
+                    migratedUpdateFrequency = .never
+                case .some(let explicitFrequency):
+                    migratedUpdateConsent = true
+                    migratedUpdateFrequency = explicitFrequency
+                case .none:
+                    migratedUpdateConsent = generalDefaults.backgroundUpdateChecksEnabled
+                    migratedUpdateFrequency = generalDefaults.updateCheckFrequency
+                }
+
+                userDefaults.set(migratedUpdateConsent, forKey: backgroundUpdateChecksEnabledKey)
+                userDefaults.set(migratedUpdateFrequency.rawValue, forKey: updateCheckFrequencyKey)
+            }
+
+            if userDefaults.object(forKey: persistentDiagnosticFileLoggingEnabledKey) == nil {
+                userDefaults.set(
+                    generalDefaults.persistentDiagnosticFileLoggingEnabled,
+                    forKey: persistentDiagnosticFileLoggingEnabledKey
+                )
+            }
+
+            userDefaults.set(true, forKey: onboardingPrivacyMigrationKey)
         }
 
-        var scrollUpAction: DockAction
-        if let scrollUpRaw = userDefaults.string(forKey: scrollUpActionKey),
-           let scrollUp = DockAction(rawValue: scrollUpRaw) {
-            scrollUpAction = scrollUp
-        } else {
-            scrollUpAction = .none
+        let deprecatedBringAllToFrontMigrated = userDefaults.bool(forKey: deprecatedBringAllToFrontMigratedKey)
+        if !deprecatedBringAllToFrontMigrated {
+            let actionKeys = [
+                clickActionKey,
+                scrollUpActionKey,
+                scrollDownActionKey,
+                shiftClickActionKey,
+                optionClickActionKey,
+                shiftOptionClickActionKey,
+                firstClickShiftActionKey,
+                firstClickOptionActionKey,
+                firstClickShiftOptionActionKey,
+                shiftScrollUpActionKey,
+                optionScrollUpActionKey,
+                shiftOptionScrollUpActionKey,
+                shiftScrollDownActionKey,
+                optionScrollDownActionKey,
+                shiftOptionScrollDownActionKey,
+            ]
+
+            for key in actionKeys where userDefaults.string(forKey: key) == DockAction.bringAllToFront.rawValue {
+                userDefaults.set(DockAction.activateApp.rawValue, forKey: key)
+            }
+
+            if userDefaults.string(forKey: firstClickBehaviorKey) == FirstClickBehavior.bringAllToFront.rawValue {
+                userDefaults.set(FirstClickBehavior.activateApp.rawValue, forKey: firstClickBehaviorKey)
+            }
+
+            userDefaults.set(true, forKey: deprecatedBringAllToFrontMigratedKey)
         }
 
-        var scrollDownAction: DockAction
-        if let scrollDownRaw = userDefaults.string(forKey: scrollDownActionKey),
-           let scrollDown = DockAction(rawValue: scrollDownRaw) {
-            scrollDownAction = scrollDown
-        } else {
-            scrollDownAction = .none
-        }
+        // Load base mappings from UserDefaults or use the shipped defaults.
+        var clickAction = Self.loadAction(from: userDefaults, forKey: clickActionKey) ?? appActionDefaults.clickAction
+        var scrollUpAction = Self.loadAction(from: userDefaults, forKey: scrollUpActionKey) ?? modifierDefaults.scrollUpAction
+        var scrollDownAction = Self.loadAction(from: userDefaults, forKey: scrollDownActionKey) ?? modifierDefaults.scrollDownAction
 
         // One-time migration to move older defaults to current defaults.
         let migrated = userDefaults.bool(forKey: scrollDefaultsMigratedKey)
@@ -988,70 +1313,65 @@ final class Preferences: ObservableObject {
         }
 
         // Extended modifier mappings.
-        var shiftClickAction = Self.loadAction(from: userDefaults, forKey: shiftClickActionKey) ?? .none
-        var optionClickAction = Self.loadAction(from: userDefaults, forKey: optionClickActionKey) ?? .singleAppMode
-        var shiftOptionClickAction = Self.loadAction(from: userDefaults, forKey: shiftOptionClickActionKey) ?? .none
+        var shiftClickAction = Self.loadAction(from: userDefaults, forKey: shiftClickActionKey) ?? modifierDefaults.shiftClickAction
+        var optionClickAction = Self.loadAction(from: userDefaults, forKey: optionClickActionKey) ?? modifierDefaults.optionClickAction
+        var shiftOptionClickAction = Self.loadAction(from: userDefaults, forKey: shiftOptionClickActionKey) ?? modifierDefaults.shiftOptionClickAction
 
-        var firstClickShiftAction = Self.loadAction(from: userDefaults, forKey: firstClickShiftActionKey) ?? .hideOthers
-        var firstClickOptionAction = Self.loadAction(from: userDefaults, forKey: firstClickOptionActionKey) ?? .singleAppMode
-        var firstClickShiftOptionAction = Self.loadAction(from: userDefaults, forKey: firstClickShiftOptionActionKey) ?? .none
+        var firstClickShiftAction = Self.loadAction(from: userDefaults, forKey: firstClickShiftActionKey) ?? modifierDefaults.firstClickShiftAction
+        var firstClickOptionAction = Self.loadAction(from: userDefaults, forKey: firstClickOptionActionKey) ?? modifierDefaults.firstClickOptionAction
+        var firstClickShiftOptionAction = Self.loadAction(from: userDefaults, forKey: firstClickShiftOptionActionKey) ?? modifierDefaults.firstClickShiftOptionAction
 
-        var shiftScrollUpAction = Self.loadAction(from: userDefaults, forKey: shiftScrollUpActionKey) ?? .none
-        var optionScrollUpAction = Self.loadAction(from: userDefaults, forKey: optionScrollUpActionKey) ?? .none
-        var shiftOptionScrollUpAction = Self.loadAction(from: userDefaults, forKey: shiftOptionScrollUpActionKey) ?? .none
+        var shiftScrollUpAction = Self.loadAction(from: userDefaults, forKey: shiftScrollUpActionKey) ?? modifierDefaults.shiftScrollUpAction
+        var optionScrollUpAction = Self.loadAction(from: userDefaults, forKey: optionScrollUpActionKey) ?? modifierDefaults.optionScrollUpAction
+        var shiftOptionScrollUpAction = Self.loadAction(from: userDefaults, forKey: shiftOptionScrollUpActionKey) ?? modifierDefaults.shiftOptionScrollUpAction
 
-        var shiftScrollDownAction = Self.loadAction(from: userDefaults, forKey: shiftScrollDownActionKey) ?? .none
-        var optionScrollDownAction = Self.loadAction(from: userDefaults, forKey: optionScrollDownActionKey) ?? .none
-        var shiftOptionScrollDownAction = Self.loadAction(from: userDefaults, forKey: shiftOptionScrollDownActionKey) ?? .none
-        let folderClickAction = Self.loadFolderAction(from: userDefaults, forKey: folderClickActionKey) ?? Self.defaultFolderClickAction
-        let shiftFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderClickActionKey) ?? .none
-        let optionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderClickActionKey) ?? DockFolderAction(
-            openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
-            view: .automatic,
-            sortBy: .none,
-            groupBy: .none
-        )
-        let shiftOptionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderClickActionKey) ?? .none
-        let folderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: folderScrollUpActionKey) ?? .none
-        let shiftFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderScrollUpActionKey) ?? .none
-        let optionFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderScrollUpActionKey) ?? .none
-        let shiftOptionFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderScrollUpActionKey) ?? .none
-        let folderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: folderScrollDownActionKey) ?? .none
-        let shiftFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderScrollDownActionKey) ?? .none
-        let optionFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderScrollDownActionKey) ?? .none
-        let shiftOptionFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderScrollDownActionKey) ?? .none
+        var shiftScrollDownAction = Self.loadAction(from: userDefaults, forKey: shiftScrollDownActionKey) ?? modifierDefaults.shiftScrollDownAction
+        var optionScrollDownAction = Self.loadAction(from: userDefaults, forKey: optionScrollDownActionKey) ?? modifierDefaults.optionScrollDownAction
+        var shiftOptionScrollDownAction = Self.loadAction(from: userDefaults, forKey: shiftOptionScrollDownActionKey) ?? modifierDefaults.shiftOptionScrollDownAction
+        let folderClickAction = Self.loadFolderAction(from: userDefaults, forKey: folderClickActionKey) ?? folderDefaults.click
+        let shiftFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderClickActionKey) ?? folderDefaults.shiftClick
+        let optionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderClickActionKey) ?? folderDefaults.optionClick
+        let shiftOptionFolderClickAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderClickActionKey) ?? folderDefaults.shiftOptionClick
+        let folderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: folderScrollUpActionKey) ?? folderDefaults.scrollUp
+        let shiftFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderScrollUpActionKey) ?? folderDefaults.shiftScrollUp
+        let optionFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderScrollUpActionKey) ?? folderDefaults.optionScrollUp
+        let shiftOptionFolderScrollUpAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderScrollUpActionKey) ?? folderDefaults.shiftOptionScrollUp
+        let folderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: folderScrollDownActionKey) ?? folderDefaults.scrollDown
+        let shiftFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: shiftFolderScrollDownActionKey) ?? folderDefaults.shiftScrollDown
+        let optionFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: optionFolderScrollDownActionKey) ?? folderDefaults.optionScrollDown
+        let shiftOptionFolderScrollDownAction = Self.loadFolderAction(from: userDefaults, forKey: shiftOptionFolderScrollDownActionKey) ?? folderDefaults.shiftOptionScrollDown
 
         let modifierMigrated = userDefaults.bool(forKey: modifierDefaultsMigratedKey)
         if !modifierMigrated {
             // Respect explicit values when present, otherwise seed new keys.
             if userDefaults.object(forKey: shiftClickActionKey) == nil {
-                shiftClickAction = .none
+                shiftClickAction = modifierDefaults.shiftClickAction
             }
             if userDefaults.object(forKey: optionClickActionKey) == nil {
-                optionClickAction = .singleAppMode
+                optionClickAction = modifierDefaults.optionClickAction
             }
             if userDefaults.object(forKey: shiftOptionClickActionKey) == nil {
-                shiftOptionClickAction = .none
+                shiftOptionClickAction = modifierDefaults.shiftOptionClickAction
             }
 
             if userDefaults.object(forKey: shiftScrollUpActionKey) == nil {
-                shiftScrollUpAction = .none
+                shiftScrollUpAction = modifierDefaults.shiftScrollUpAction
             }
             if userDefaults.object(forKey: optionScrollUpActionKey) == nil {
-                optionScrollUpAction = .none
+                optionScrollUpAction = modifierDefaults.optionScrollUpAction
             }
             if userDefaults.object(forKey: shiftOptionScrollUpActionKey) == nil {
-                shiftOptionScrollUpAction = .none
+                shiftOptionScrollUpAction = modifierDefaults.shiftOptionScrollUpAction
             }
 
             if userDefaults.object(forKey: shiftScrollDownActionKey) == nil {
-                shiftScrollDownAction = .none
+                shiftScrollDownAction = modifierDefaults.shiftScrollDownAction
             }
             if userDefaults.object(forKey: optionScrollDownActionKey) == nil {
-                optionScrollDownAction = .none
+                optionScrollDownAction = modifierDefaults.optionScrollDownAction
             }
             if userDefaults.object(forKey: shiftOptionScrollDownActionKey) == nil {
-                shiftOptionScrollDownAction = .none
+                shiftOptionScrollDownAction = modifierDefaults.shiftOptionScrollDownAction
             }
 
             userDefaults.set(true, forKey: modifierDefaultsMigratedKey)
@@ -1059,13 +1379,19 @@ final class Preferences: ObservableObject {
 
         let firstClickModifierMigrated = userDefaults.bool(forKey: firstClickModifierActionsMigratedKey)
         if !firstClickModifierMigrated {
-            firstClickShiftAction = shiftClickAction
-            firstClickOptionAction = optionClickAction
-            firstClickShiftOptionAction = shiftOptionClickAction
+            let hasLegacyClickModifierValues = userDefaults.object(forKey: shiftClickActionKey) != nil
+                || userDefaults.object(forKey: optionClickActionKey) != nil
+                || userDefaults.object(forKey: shiftOptionClickActionKey) != nil
 
-            shiftClickAction = .none
-            optionClickAction = .none
-            shiftOptionClickAction = .none
+            if hasLegacyClickModifierValues {
+                firstClickShiftAction = shiftClickAction
+                firstClickOptionAction = optionClickAction
+                firstClickShiftOptionAction = shiftOptionClickAction
+            }
+
+            shiftClickAction = modifierDefaults.shiftClickAction
+            optionClickAction = modifierDefaults.optionClickAction
+            shiftOptionClickAction = modifierDefaults.shiftOptionClickAction
 
             userDefaults.set(firstClickShiftAction.rawValue, forKey: firstClickShiftActionKey)
             userDefaults.set(firstClickOptionAction.rawValue, forKey: firstClickOptionActionKey)
@@ -1076,6 +1402,32 @@ final class Preferences: ObservableObject {
             userDefaults.set(true, forKey: firstClickModifierActionsMigratedKey)
         }
 
+        let obsoleteAppClickActionsMigrated = userDefaults.bool(forKey: obsoleteAppClickActionsMigratedKey)
+        if !obsoleteAppClickActionsMigrated {
+            clickAction = appActionDefaults.clickAction
+            shiftClickAction = modifierDefaults.shiftClickAction
+            optionClickAction = modifierDefaults.optionClickAction
+            shiftOptionClickAction = modifierDefaults.shiftOptionClickAction
+
+            userDefaults.set(clickAction.rawValue, forKey: clickActionKey)
+            userDefaults.set(shiftClickAction.rawValue, forKey: shiftClickActionKey)
+            userDefaults.set(optionClickAction.rawValue, forKey: optionClickActionKey)
+            userDefaults.set(shiftOptionClickAction.rawValue, forKey: shiftOptionClickActionKey)
+            userDefaults.set(appActionDefaults.clickAppExposeRequiresMultipleWindows,
+                             forKey: clickAppExposeRequiresMultipleWindowsKey)
+
+            var updatedAppExposeMap = userDefaults.object(forKey: appExposeRequiresMultipleWindowsMapKey) as? [String: Bool] ?? [:]
+            for modifier in [AppExposeSlotModifier.none, .shift, .option, .shiftOption] {
+                let slot = AppExposeSlotKey.make(source: .click, modifier: modifier)
+                updatedAppExposeMap[slot] = appActionDefaults.clickAppExposeRequiresMultipleWindows
+            }
+            userDefaults.set(updatedAppExposeMap, forKey: appExposeRequiresMultipleWindowsMapKey)
+            userDefaults.set(true, forKey: obsoleteAppClickActionsMigratedKey)
+        }
+
+        Self.seedIfMissing(clickAction, in: userDefaults, forKey: clickActionKey)
+        Self.seedIfMissing(scrollUpAction, in: userDefaults, forKey: scrollUpActionKey)
+        Self.seedIfMissing(scrollDownAction, in: userDefaults, forKey: scrollDownActionKey)
         Self.seedIfMissing(shiftClickAction, in: userDefaults, forKey: shiftClickActionKey)
         Self.seedIfMissing(optionClickAction, in: userDefaults, forKey: optionClickActionKey)
         Self.seedIfMissing(shiftOptionClickAction, in: userDefaults, forKey: shiftOptionClickActionKey)
@@ -1100,28 +1452,52 @@ final class Preferences: ObservableObject {
         Self.seedIfMissing(shiftFolderScrollDownAction, in: userDefaults, forKey: shiftFolderScrollDownActionKey)
         Self.seedIfMissing(optionFolderScrollDownAction, in: userDefaults, forKey: optionFolderScrollDownActionKey)
         Self.seedIfMissing(shiftOptionFolderScrollDownAction, in: userDefaults, forKey: shiftOptionFolderScrollDownActionKey)
+        Self.seedIfMissing(generalDefaults.showOnStartup, in: userDefaults, forKey: showOnStartupKey)
+        Self.seedIfMissing(generalDefaults.showMenuBarIcon, in: userDefaults, forKey: showMenuBarIconKey)
+        Self.seedIfMissing(generalDefaults.firstLaunchCompleted, in: userDefaults, forKey: firstLaunchCompletedKey)
+        Self.seedIfMissing(generalDefaults.onboardingState, in: userDefaults, forKey: onboardingStateKey)
+        Self.seedIfMissing(generalDefaults.backgroundUpdateChecksEnabled, in: userDefaults, forKey: backgroundUpdateChecksEnabledKey)
+        Self.seedIfMissing(generalDefaults.updateCheckFrequency, in: userDefaults, forKey: updateCheckFrequencyKey)
+        Self.seedIfMissing(
+            generalDefaults.persistentDiagnosticFileLoggingEnabled,
+            in: userDefaults,
+            forKey: persistentDiagnosticFileLoggingEnabledKey
+        )
+        Self.seedIfMissing(appActionDefaults.firstClickBehavior, in: userDefaults, forKey: firstClickBehaviorKey)
+        Self.seedIfMissing(appActionDefaults.firstClickAppExposeRequiresMultipleWindows,
+                           in: userDefaults,
+                           forKey: firstClickAppExposeRequiresMultipleWindowsKey)
+        Self.seedIfMissing(appActionDefaults.clickAppExposeRequiresMultipleWindows,
+                           in: userDefaults,
+                           forKey: clickAppExposeRequiresMultipleWindowsKey)
 
         // General settings defaults
         let showOnStartup = self.settingsStore.value(for: Self.showOnStartupPreferenceKey)
         let showMenuBarIcon = self.settingsStore.value(for: Self.showMenuBarIconPreferenceKey)
         let firstLaunchCompleted = self.settingsStore.value(for: Self.firstLaunchCompletedPreferenceKey)
+        let onboardingState = self.settingsStore.value(for: Self.onboardingStatePreferenceKey)
+        let backgroundUpdateChecksEnabled = self.settingsStore.value(for: Self.backgroundUpdateChecksEnabledPreferenceKey)
 
-        // Login item: prefer system status; fall back to stored preference
-        let loginItemEnabled = SMAppService.mainApp.status == .enabled
-        let startAtLogin: Bool
-        if loginItemEnabled {
-            startAtLogin = true
-        } else {
-            startAtLogin = userDefaults.object(forKey: startAtLoginKey) as? Bool ?? false
-        }
+        let startAtLogin = Self.resolvedStartAtLogin(defaults: userDefaults,
+                                                     bundleIdentifier: resolvedBundleIdentifier,
+                                                     loginItemStatus: resolvedLoginItemClient.status)
 
         let updateCheckFrequency = self.settingsStore.value(for: Self.updateCheckFrequencyPreferenceKey)
+        let persistentDiagnosticFileLoggingEnabled = self.settingsStore.value(
+            for: Self.persistentDiagnosticFileLoggingEnabledPreferenceKey
+        )
 
         let firstClickBehavior = self.settingsStore.value(for: Self.firstClickBehaviorPreferenceKey)
 
-        let firstClickAppExposeRequiresMultipleWindows = userDefaults.object(forKey: firstClickAppExposeRequiresMultipleWindowsKey) as? Bool ?? true
-        let clickAppExposeRequiresMultipleWindows = userDefaults.object(forKey: clickAppExposeRequiresMultipleWindowsKey) as? Bool ?? false
-        var appExposeRequiresMultipleWindowsMap = userDefaults.object(forKey: appExposeRequiresMultipleWindowsMapKey) as? [String: Bool] ?? [:]
+        let firstClickAppExposeRequiresMultipleWindows =
+            userDefaults.object(forKey: firstClickAppExposeRequiresMultipleWindowsKey) as? Bool
+            ?? appActionDefaults.firstClickAppExposeRequiresMultipleWindows
+        let clickAppExposeRequiresMultipleWindows =
+            userDefaults.object(forKey: clickAppExposeRequiresMultipleWindowsKey) as? Bool
+            ?? appActionDefaults.clickAppExposeRequiresMultipleWindows
+        var appExposeRequiresMultipleWindowsMap =
+            userDefaults.object(forKey: appExposeRequiresMultipleWindowsMapKey) as? [String: Bool]
+            ?? appActionDefaults.appExposeRequiresMultipleWindowsMap
 
         let appExposeMapMigrated = userDefaults.bool(forKey: appExposeRequiresMultipleWindowsMapMigratedKey)
         if !appExposeMapMigrated {
@@ -1130,6 +1506,8 @@ final class Preferences: ObservableObject {
                                                activeAppDefault: clickAppExposeRequiresMultipleWindows)
             userDefaults.set(appExposeRequiresMultipleWindowsMap, forKey: appExposeRequiresMultipleWindowsMapKey)
             userDefaults.set(true, forKey: appExposeRequiresMultipleWindowsMapMigratedKey)
+        } else if userDefaults.object(forKey: appExposeRequiresMultipleWindowsMapKey) == nil {
+            userDefaults.set(appExposeRequiresMultipleWindowsMap, forKey: appExposeRequiresMultipleWindowsMapKey)
         }
 
         // Assign stored properties last
@@ -1167,27 +1545,40 @@ final class Preferences: ObservableObject {
         self.showOnStartup = showOnStartup
         self.showMenuBarIcon = showMenuBarIcon
         self.firstLaunchCompleted = firstLaunchCompleted
+        self.onboardingState = onboardingState
+        self.backgroundUpdateChecksEnabled = backgroundUpdateChecksEnabled
         self.startAtLogin = startAtLogin
         self.updateCheckFrequency = updateCheckFrequency
+        self.persistentDiagnosticFileLoggingEnabled = persistentDiagnosticFileLoggingEnabled
 
         if applyLoginItemRepair {
             repairLoginItemIfNeeded()
         }
     }
 
-    convenience init(testingUserDefaults: UserDefaults) {
+    convenience init(testingUserDefaults: UserDefaults,
+                     bundleIdentifier: String? = nil,
+                     loginItemClient: LoginItemClient? = nil) {
+        let resolvedBundleIdentifier = bundleIdentifier ?? AppIdentity.bundleIdentifier
+
         self.init(userDefaults: testingUserDefaults,
-                  settingsStore: SettingsStore(defaults: testingUserDefaults),
-                  applyLoginItemRepair: false)
+                  settingsStore: SettingsStore(defaults: testingUserDefaults,
+                                               defaultsDomainName: SettingsStore.defaultsDomainName(for: resolvedBundleIdentifier)),
+                  applyLoginItemRepair: false,
+                  bundleIdentifier: resolvedBundleIdentifier,
+                  loginItemClient: loginItemClient)
     }
 
-    private static func migrateLegacyDefaultsDomainIfNeeded(defaults: UserDefaults) {
-        guard AppIdentity.usesCleanupBundleIdentifier,
+    static func migrateLegacyDefaultsDomainIfNeeded(defaults: UserDefaults,
+                                                    bundleIdentifier: String? = nil) {
+        let resolvedBundleIdentifier = bundleIdentifier ?? AppIdentity.bundleIdentifier
+
+        guard AppIdentity.supportsLegacyDefaultsMigration(bundleIdentifier: resolvedBundleIdentifier),
               defaults.bool(forKey: "dockmintDefaultsDomainMigrated_v1") == false else {
             return
         }
 
-        let legacyDomain = AppIdentity.isBetaBuild
+        let legacyDomain = AppIdentity.isBetaBuild(bundleIdentifier: resolvedBundleIdentifier)
             ? AppIdentity.transitionBetaBundleIdentifier
             : AppIdentity.transitionStableBundleIdentifier
 
@@ -1213,9 +1604,9 @@ final class Preferences: ObservableObject {
             defaults.set(true, forKey: migrationKey)
         }
 
-        // Existing users keep any intentional folder-click customization. We only rewrite the
-        // exact historical plain-click default so those installs pick up the new Finder-native
-        // behavior without affecting explicit Finder automation or custom app targets.
+        // Existing users keep any intentional folder-click customization. This migration only
+        // normalizes the exact historical plain-click Dock default back to the canonical shipped
+        // Dock-open action without touching explicit Finder automation or custom app targets.
         guard let storedAction = loadFolderAction(from: defaults, forKey: actionKey),
               storedAction == Self.legacyDefaultFolderClickAction else {
             return
@@ -1224,20 +1615,38 @@ final class Preferences: ObservableObject {
         defaults.set(Self.defaultFolderClickAction.storageValue, forKey: actionKey)
     }
 
+    static func resolvedStartAtLogin(defaults: UserDefaults,
+                                     bundleIdentifier: String? = nil,
+                                     loginItemStatus: () -> SMAppService.Status = { SMAppService.mainApp.status }) -> Bool {
+        let resolvedBundleIdentifier = bundleIdentifier ?? AppIdentity.bundleIdentifier
+
+        guard AppIdentity.supportsLoginItem(bundleIdentifier: resolvedBundleIdentifier) else {
+            defaults.set(false, forKey: "startAtLogin")
+            return false
+        }
+
+        if loginItemStatus() == .enabled {
+            return true
+        }
+
+        return defaults.object(forKey: "startAtLogin") as? Bool ?? true
+    }
+
     private func repairLoginItemIfNeeded() {
-        guard AppIdentity.usesCleanupBundleIdentifier else { return }
+        guard AppIdentity.supportsLegacyDefaultsMigration(bundleIdentifier: bundleIdentifier) else { return }
+        guard AppIdentity.supportsLoginItem(bundleIdentifier: bundleIdentifier) else { return }
         guard userDefaults.bool(forKey: loginItemRepairKey) == false else { return }
         guard startAtLogin else {
             userDefaults.set(true, forKey: loginItemRepairKey)
             return
         }
-        guard SMAppService.mainApp.status != .enabled else {
+        guard loginItemClient.status() != .enabled else {
             userDefaults.set(true, forKey: loginItemRepairKey)
             return
         }
 
         do {
-            try SMAppService.mainApp.register()
+            try loginItemClient.register()
             Logger.log("Re-registered login item after Dockmint bundle identifier migration")
         } catch {
             Logger.log("Failed to re-register login item after Dockmint bundle identifier migration: \(error.localizedDescription)")
@@ -1248,6 +1657,9 @@ final class Preferences: ObservableObject {
 
     private static func loadAction(from defaults: UserDefaults, forKey key: String) -> DockAction? {
         guard let raw = defaults.string(forKey: key) else { return nil }
+        if raw == DockAction.bringAllToFront.rawValue {
+            return .activateApp
+        }
         return DockAction(rawValue: raw)
     }
 
@@ -1266,11 +1678,32 @@ final class Preferences: ObservableObject {
         defaults.set(action.storageValue, forKey: key)
     }
 
+    private static func seedIfMissing(_ value: Bool, in defaults: UserDefaults, forKey key: String) {
+        guard defaults.object(forKey: key) == nil else { return }
+        defaults.set(value, forKey: key)
+    }
+
+    private static func seedIfMissing<T: RawRepresentable>(_ value: T,
+                                                           in defaults: UserDefaults,
+                                                           forKey key: String) where T.RawValue == String {
+        guard defaults.object(forKey: key) == nil else { return }
+        defaults.set(value.rawValue, forKey: key)
+    }
+
+    private static func defaultAppExposeRequiresMultipleWindowsMap(firstClickDefault: Bool,
+                                                                   activeAppDefault: Bool) -> [String: Bool] {
+        var map: [String: Bool] = [:]
+        seedMissingAppExposeGateSlots(in: &map,
+                                      firstClickDefault: firstClickDefault,
+                                      activeAppDefault: activeAppDefault)
+        return map
+    }
+
     private static func seedMissingAppExposeGateSlots(in map: inout [String: Bool],
                                                       firstClickDefault: Bool,
                                                       activeAppDefault: Bool) {
         let firstClickModifiers: [AppExposeSlotModifier] = [.shift, .option, .shiftOption]
-        let clickModifiers: [AppExposeSlotModifier] = [.shift, .option, .shiftOption]
+        let clickModifiers: [AppExposeSlotModifier] = [.none, .shift, .option, .shiftOption]
         let scrollSources: [AppExposeSlotSource] = [.scrollUp, .scrollDown]
         let scrollModifiers: [AppExposeSlotModifier] = [.none, .shift, .option, .shiftOption]
 
@@ -1304,51 +1737,77 @@ final class Preferences: ObservableObject {
     }
 
     func resetAppActionsToDefaults() {
-        clickAction = .appExpose
-        firstClickBehavior = .appExpose
-        firstClickAppExposeRequiresMultipleWindows = true
-        clickAppExposeRequiresMultipleWindows = false
-        appExposeRequiresMultipleWindowsMap = [:]
+        let appDefaults = Self.shippedAppActionDefaults
+        let modifierDefaults = Self.shippedModifierDefaults
 
-        firstClickShiftAction = .hideOthers
-        firstClickOptionAction = .singleAppMode
-        firstClickShiftOptionAction = .none
+        clickAction = appDefaults.clickAction
+        firstClickBehavior = appDefaults.firstClickBehavior
+        firstClickAppExposeRequiresMultipleWindows = appDefaults.firstClickAppExposeRequiresMultipleWindows
+        clickAppExposeRequiresMultipleWindows = appDefaults.clickAppExposeRequiresMultipleWindows
+        appExposeRequiresMultipleWindowsMap = appDefaults.appExposeRequiresMultipleWindowsMap
 
-        shiftClickAction = .none
-        optionClickAction = .none
-        shiftOptionClickAction = .none
+        firstClickShiftAction = modifierDefaults.firstClickShiftAction
+        firstClickOptionAction = modifierDefaults.firstClickOptionAction
+        firstClickShiftOptionAction = modifierDefaults.firstClickShiftOptionAction
 
-        scrollUpAction = .none
-        shiftScrollUpAction = .none
-        optionScrollUpAction = .none
-        shiftOptionScrollUpAction = .none
+        shiftClickAction = modifierDefaults.shiftClickAction
+        optionClickAction = modifierDefaults.optionClickAction
+        shiftOptionClickAction = modifierDefaults.shiftOptionClickAction
 
-        scrollDownAction = .none
-        shiftScrollDownAction = .none
-        optionScrollDownAction = .none
-        shiftOptionScrollDownAction = .none
+        scrollUpAction = modifierDefaults.scrollUpAction
+        shiftScrollUpAction = modifierDefaults.shiftScrollUpAction
+        optionScrollUpAction = modifierDefaults.optionScrollUpAction
+        shiftOptionScrollUpAction = modifierDefaults.shiftOptionScrollUpAction
+
+        scrollDownAction = modifierDefaults.scrollDownAction
+        shiftScrollDownAction = modifierDefaults.shiftScrollDownAction
+        optionScrollDownAction = modifierDefaults.optionScrollDownAction
+        shiftOptionScrollDownAction = modifierDefaults.shiftOptionScrollDownAction
     }
 
     func resetFolderActionsToDefaults() {
-        folderClickAction = Self.defaultFolderClickAction
-        shiftFolderClickAction = .none
-        optionFolderClickAction = DockFolderAction(
-            openInApplicationIdentifier: DockFolderOpenApplicationCatalog.finderBundleIdentifier,
-            view: .automatic,
-            sortBy: .none,
-            groupBy: .none
-        )
-        shiftOptionFolderClickAction = .none
+        let folderDefaults = Self.shippedFolderDefaults
 
-        folderScrollUpAction = .none
-        shiftFolderScrollUpAction = .none
-        optionFolderScrollUpAction = .none
-        shiftOptionFolderScrollUpAction = .none
+        folderClickAction = folderDefaults.click
+        shiftFolderClickAction = folderDefaults.shiftClick
+        optionFolderClickAction = folderDefaults.optionClick
+        shiftOptionFolderClickAction = folderDefaults.shiftOptionClick
 
-        folderScrollDownAction = .none
-        shiftFolderScrollDownAction = .none
-        optionFolderScrollDownAction = .none
-        shiftOptionFolderScrollDownAction = .none
+        folderScrollUpAction = folderDefaults.scrollUp
+        shiftFolderScrollUpAction = folderDefaults.shiftScrollUp
+        optionFolderScrollUpAction = folderDefaults.optionScrollUp
+        shiftOptionFolderScrollUpAction = folderDefaults.shiftOptionScrollUp
+
+        folderScrollDownAction = folderDefaults.scrollDown
+        shiftFolderScrollDownAction = folderDefaults.shiftScrollDown
+        optionFolderScrollDownAction = folderDefaults.optionScrollDown
+        shiftOptionFolderScrollDownAction = folderDefaults.shiftOptionScrollDown
+    }
+
+    func advanceOnboarding() {
+        guard onboardingState != .completed else { return }
+        onboardingState = onboardingState.next
+    }
+
+    func returnToPreviousOnboardingStep() {
+        guard onboardingState != .notStarted else { return }
+        onboardingState = onboardingState.previous
+    }
+
+    func completeOnboarding() {
+        onboardingState = .completed
+    }
+
+    func enableBackgroundUpdateChecks(_ frequency: UpdateCheckFrequency = .weekly) {
+        backgroundUpdateChecksEnabled = true
+        if updateCheckFrequency == .never {
+            updateCheckFrequency = frequency
+        }
+    }
+
+    func disableBackgroundUpdateChecks() {
+        backgroundUpdateChecksEnabled = false
+        updateCheckFrequency = .never
     }
 
     func markUpdateCheckNow(_ date: Date = Date()) {

@@ -16,7 +16,7 @@ private enum SettingsLayout {
     static let tableCornerRadius: CGFloat = 12
     static let tableCellSpacing: CGFloat = 12
     static let actionModifierColumnWidth: CGFloat = 144
-    static let actionColumnWidth: CGFloat = 144
+    static let actionColumnWidth: CGFloat = 172
     static let folderModifierColumnWidth: CGFloat = 128
     static let folderGestureColumnWidth: CGFloat = 96
     static let folderOpenWithColumnWidth: CGFloat = 134
@@ -26,8 +26,8 @@ private enum SettingsLayout {
     static let folderDetailPickerWidth: CGFloat = 134
     static let appActionsCardWidth: CGFloat =
         actionModifierColumnWidth +
-        (actionColumnWidth * 4) +
-        (tableCellSpacing * 4) +
+        (actionColumnWidth * 3) +
+        (tableCellSpacing * 3) +
         (tableCardPadding * 2)
     static let folderOptionsPreferredWidth: CGFloat =
         ((folderDetailLabelWidth + folderDetailInlineSpacing + folderDetailPickerWidth) * 3) +
@@ -96,8 +96,21 @@ struct PreferencesView: View {
     @ObservedObject var folderOpenWithOptionsStore: FolderOpenWithOptionsStore
     @ObservedObject var viewModel: SettingsWindowViewModel
     let onPaneAppear: (SettingsPane) -> Void
+    let onPaneSelectionRequest: (SettingsPane) -> Void
 
     private let appDisplayName = AppServices.appDisplayName
+    private static let automationSectionNavigationEnabled: Bool = {
+        AppIdentity.boolFlag(primary: "DOCKMINT_TEST_SUITE", legacy: "DOCKTOR_TEST_SUITE") ||
+        AppIdentity.boolFlag(primary: "DOCKMINT_SETTINGS_PERF", legacy: "DOCKTOR_SETTINGS_PERF")
+    }()
+
+    private var loginItemAvailable: Bool {
+        AppIdentity.supportsLoginItem
+    }
+
+    private var updatesAvailable: Bool {
+        AppIdentity.supportsUpdates
+    }
 
     private enum MappingSource: CaseIterable, Hashable {
         case click
@@ -118,7 +131,7 @@ struct PreferencesView: View {
         var title: String {
             switch self {
             case .click:
-                return "Double Click"
+                return "Click"
             case .scrollUp:
                 return "Scroll Up"
             case .scrollDown:
@@ -181,7 +194,6 @@ struct PreferencesView: View {
         case appExposeMultiple
         case minimizeAll
         case quitApp
-        case bringAllToFront
         case hideOthers
         case singleAppMode
 
@@ -201,12 +213,10 @@ struct PreferencesView: View {
                 return "Minimize All"
             case .quitApp:
                 return "Quit App"
-            case .bringAllToFront:
-                return "Bring All to Front"
             case .hideOthers:
                 return "Hide Others"
             case .singleAppMode:
-                return "Single App Mode"
+                return "Hide Current, Activate Clicked"
             }
         }
 
@@ -220,7 +230,6 @@ struct PreferencesView: View {
 
     private enum FirstClickMenuOption: String, CaseIterable, Hashable {
         case activateApp
-        case bringAllToFront
         case appExpose
         case appExposeMultiple
 
@@ -228,8 +237,6 @@ struct PreferencesView: View {
             switch self {
             case .activateApp:
                 return "Activate App"
-            case .bringAllToFront:
-                return "Bring All to Front"
             case .appExpose:
                 return "App Exposé"
             case .appExposeMultiple:
@@ -273,7 +280,6 @@ struct PreferencesView: View {
 
     var body: some View {
         singlePagePane
-            .onAppear { onPaneAppear(.general) }
     }
 
     private var generalPane: some View {
@@ -290,40 +296,65 @@ struct PreferencesView: View {
     }
 
     private var singlePagePane: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                singlePageGeneralSection
-
-                sectionDivider
-
-                VStack(alignment: .leading, spacing: 0) {
-                    paneSectionHeader(
-                        title: "App Actions",
-                        description: "Choose what happens when you click or scroll on app icons in the Dock.",
-                        buttonTitle: "Reset App Actions",
-                        action: preferences.resetAppActionsToDefaults
-                    )
-
-                    appActionsTable
+        ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: SettingsLayout.paneHeaderSpacing) {
+                if Self.automationSectionNavigationEnabled {
+                    automationSectionNavigationBar
                 }
 
-                sectionDivider
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        singlePageGeneralSection
+                            .id(SettingsPane.general.id)
+                            .accessibilityIdentifier("settings-section-general")
+                            .accessibilityLabel("General Section")
 
-                VStack(alignment: .leading, spacing: 0) {
-                    paneSectionHeader(
-                        title: "Folder Actions",
-                        description: "Choose what happens when you click or scroll on folder stacks in the Dock.",
-                        buttonTitle: "Reset Folder Actions",
-                        action: preferences.resetFolderActionsToDefaults
-                    )
+                        sectionDivider
 
-                    folderActionsTables
+                        VStack(alignment: .leading, spacing: 0) {
+                            paneSectionHeader(
+                                title: "App Actions",
+                                description: "Choose what happens when you click or scroll on app icons in the Dock.",
+                                buttonTitle: "Reset App Actions",
+                                action: preferences.resetAppActionsToDefaults
+                            )
+
+                            appActionsTable
+                        }
+                        .id(SettingsPane.appActions.id)
+                        .accessibilityIdentifier("settings-section-app-actions")
+                        .accessibilityLabel("App Actions Section")
+
+                        sectionDivider
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            paneSectionHeader(
+                                title: "Folder Actions",
+                                description: "Choose what happens when you click or scroll on folder stacks in the Dock.",
+                                buttonTitle: "Reset Folder Actions",
+                                action: preferences.resetFolderActionsToDefaults
+                            )
+
+                            folderActionsTables
+                        }
+                        .id(SettingsPane.folderActions.id)
+                        .accessibilityIdentifier("settings-section-folder-actions")
+                        .accessibilityLabel("Folder Actions Section")
+                    }
+                    .frame(width: SettingsLayout.windowContentWidth, alignment: .topLeading)
+                    .padding(SettingsLayout.windowPadding)
                 }
+                .scrollIndicators(.automatic)
             }
-            .frame(width: SettingsLayout.windowContentWidth, alignment: .topLeading)
-            .padding(SettingsLayout.windowPadding)
+            .onAppear {
+                scrollToSelectedPane(using: proxy, animated: false)
+                reportPaneReady(viewModel.selectedPane)
+            }
+            .onChange(of: viewModel.selectedPane) { pane in
+                scrollToSelectedPane(using: proxy, animated: false)
+                reportPaneReady(pane)
+            }
         }
-        .scrollIndicators(.automatic)
     }
 
     private var singlePageGeneralSection: some View {
@@ -349,8 +380,18 @@ struct PreferencesView: View {
         SettingsGroup(title: "General") {
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("Show menu bar icon", isOn: $preferences.showMenuBarIcon)
-                Toggle("Show settings on startup", isOn: $preferences.showOnStartup)
-                Toggle("Start \(appDisplayName) at login", isOn: $preferences.startAtLogin)
+
+                if loginItemAvailable {
+                    Toggle("Start \(appDisplayName) at login", isOn: $preferences.startAtLogin)
+                } else {
+                    Text("Start at Login unavailable")
+                        .font(.body.weight(.medium))
+                }
+
+                Toggle(
+                    "Save diagnostic logs",
+                    isOn: $preferences.persistentDiagnosticFileLoggingEnabled
+                )
 
                 HStack(spacing: 8) {
                     applicationButtons
@@ -366,20 +407,35 @@ struct PreferencesView: View {
                 Button("Check for Updates", action: updateManager.checkForUpdates)
                     .buttonStyle(.bordered)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!updateManager.canCheckForUpdates)
+                    .disabled(!updatesAvailable || !updateManager.canCheckForUpdates)
 
-                HStack(alignment: .center, spacing: SettingsLayout.formRowSpacing) {
-                    Text("Check")
+                Toggle("Enable background update checks", isOn: $preferences.backgroundUpdateChecksEnabled)
+                    .disabled(!updatesAvailable)
+
+                if !updatesAvailable {
+                    Text("Update unavailable")
+                        .font(.callout)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if preferences.backgroundUpdateChecksEnabled {
+                    HStack(alignment: .center, spacing: SettingsLayout.formRowSpacing) {
+                        Text("Check")
+                            .foregroundStyle(.secondary)
 
-                    Picker("", selection: $preferences.updateCheckFrequency) {
-                        ForEach(UpdateCheckFrequency.allCases) { frequency in
-                            Text(frequency.displayName).tag(frequency)
+                        Picker("", selection: $preferences.updateCheckFrequency) {
+                            ForEach(UpdateCheckFrequency.allCases.filter { $0 != .never }) { frequency in
+                                Text(frequency.displayName).tag(frequency)
+                            }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: SettingsLayout.pickerWidth, alignment: .leading)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(width: SettingsLayout.pickerWidth, alignment: .leading)
+                } else {
+                    Text("Background checks are off until you opt in. Manual update checks remain available.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -395,30 +451,11 @@ struct PreferencesView: View {
 
     private var permissionsSettingsGroup: some View {
         SettingsGroup(title: "Permissions") {
-            VStack(alignment: .leading, spacing: 12) {
-                permissionRow(
-                    title: "Accessibility",
-                    granted: coordinator.accessibilityGranted,
-                    infoText: "Allows \(appDisplayName) to identify Dock icons and trigger actions.",
-                    buttonTitle: "Open Settings",
-                    action: openAccessibilitySettings
-                )
-
-                permissionRow(
-                    title: "Input Monitoring",
-                    granted: coordinator.inputMonitoringGranted,
-                    infoText: "Allows \(appDisplayName) to listen for global click and scroll gestures.",
-                    buttonTitle: "Open Settings",
-                    action: openInputMonitoringSettings
-                )
-
-                if let note = permissionsStatusNote {
-                    Text(note)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            SharedPermissionsSection(
+                coordinator: coordinator,
+                buttonTitle: "Open Settings",
+                footerText: permissionsStatusNote
+            )
         }
     }
 
@@ -486,9 +523,47 @@ struct PreferencesView: View {
         .buttonStyle(.bordered)
     }
 
+    private var automationSectionNavigationBar: some View {
+        HStack(spacing: 8) {
+            Text("Automation Sections")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            ForEach(SettingsPane.allCases) { pane in
+                Button("\(pane.title) Section") {
+                    onPaneSelectionRequest(pane)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("settings-automation-\(pane.rawValue)")
+            }
+        }
+        .padding(.horizontal, SettingsLayout.windowPadding)
+        .padding(.top, SettingsLayout.windowPadding)
+    }
+
     private var sectionDivider: some View {
         Divider()
             .padding(.vertical, SettingsLayout.sectionSpacing)
+    }
+
+    private func scrollToSelectedPane(using proxy: ScrollViewProxy, animated: Bool) {
+        let scrollAction = {
+            proxy.scrollTo(viewModel.selectedPane.id, anchor: .top)
+        }
+        if animated {
+            withAnimation {
+                scrollAction()
+            }
+        } else {
+            scrollAction()
+        }
+    }
+
+    private func reportPaneReady(_ pane: SettingsPane) {
+        DispatchQueue.main.async {
+            onPaneAppear(pane)
+        }
     }
 
     private func paneSectionHeader(
@@ -521,25 +596,23 @@ struct PreferencesView: View {
             Grid(alignment: .leading, horizontalSpacing: SettingsLayout.tableCellSpacing, verticalSpacing: SettingsLayout.rowSpacing) {
                 GridRow {
                     tableHeaderCell("Modifier", width: SettingsLayout.actionModifierColumnWidth)
-                    tableHeaderCell("First Click", width: SettingsLayout.actionColumnWidth)
-                    tableHeaderCell("Double Click", width: SettingsLayout.actionColumnWidth)
+                    tableHeaderCell("Click", width: SettingsLayout.actionColumnWidth)
                     tableHeaderCell("Scroll Up", width: SettingsLayout.actionColumnWidth)
                     tableHeaderCell("Scroll Down", width: SettingsLayout.actionColumnWidth)
                 }
 
-                tableDivider(columns: 5)
+                tableDivider(columns: 4)
 
                 ForEach(Array(MappingModifier.allCases.enumerated()), id: \.element) { index, modifier in
                     GridRow(alignment: .center) {
                         tableLeadingCell(modifier.title, width: SettingsLayout.actionModifierColumnWidth)
                         appActionFirstClickCell(for: modifier)
-                        appActionCell(actionMenuBinding(source: .click, modifier: modifier))
                         appActionCell(actionMenuBinding(source: .scrollUp, modifier: modifier))
                         appActionCell(actionMenuBinding(source: .scrollDown, modifier: modifier))
                     }
 
                     if index < MappingModifier.allCases.count - 1 {
-                        tableDivider(columns: 5)
+                        tableDivider(columns: 4)
                     }
                 }
             }
@@ -830,35 +903,6 @@ struct PreferencesView: View {
         }
     }
 
-    private func permissionRow(
-        title: String,
-        granted: Bool,
-        infoText: String,
-        buttonTitle: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.circle")
-                    .foregroundStyle(granted ? Color.green : Color.orange)
-
-                Text(title)
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
-
-                Image(systemName: "info.circle")
-                    .foregroundStyle(.secondary)
-                    .help(infoText)
-            }
-
-            Spacer(minLength: 0)
-
-            Button(buttonTitle, action: action)
-                .buttonStyle(.bordered)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     private func appExposeRequiresMultipleBinding(source: MappingSource, modifier: MappingModifier) -> Binding<Bool> {
         if source == .click && modifier == .none {
             return $preferences.clickAppExposeRequiresMultipleWindows
@@ -933,8 +977,6 @@ struct PreferencesView: View {
                 switch option {
                 case .activateApp:
                     preferences.firstClickBehavior = .activateApp
-                case .bringAllToFront:
-                    preferences.firstClickBehavior = .bringAllToFront
                 case .appExpose:
                     preferences.firstClickBehavior = .appExpose
                     preferences.firstClickAppExposeRequiresMultipleWindows = false
@@ -1137,22 +1179,6 @@ struct PreferencesView: View {
         }
     }
 
-    private func openAccessibilitySettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-        }
-        coordinator.requestAccessibilityPermission()
-        coordinator.startWhenPermissionAvailable()
-    }
-
-    private func openInputMonitoringSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
-            NSWorkspace.shared.open(url)
-        }
-        coordinator.requestInputMonitoringPermission()
-        coordinator.startWhenPermissionAvailable()
-    }
-
     private func restartApp() {
         let bundleURL = Bundle.main.bundleURL
         let task = Process()
@@ -1206,6 +1232,7 @@ private struct SettingsGroup<Content: View>: View {
         preferences: AppServices.live.preferences,
         folderOpenWithOptionsStore: AppServices.live.folderOpenWithOptionsStore,
         viewModel: SettingsWindowViewModel(),
-        onPaneAppear: { _ in }
+        onPaneAppear: { _ in },
+        onPaneSelectionRequest: { _ in }
     )
 }

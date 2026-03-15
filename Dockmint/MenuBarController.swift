@@ -85,7 +85,7 @@ final class MenuBarController: NSObject {
 
     @objc
     private func openSettings() {
-        appDelegate?.showSettingsWindow()
+        appDelegate?.showSettingsWindow(explicit: true)
     }
 
     @objc

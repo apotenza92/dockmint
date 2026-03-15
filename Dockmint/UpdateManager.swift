@@ -37,17 +37,17 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
             return
         }
 
-        guard !Self.isDevelopmentBuild else {
-            Logger.log("UpdateManager disabled in development build")
+        guard AppIdentity.supportsUpdates else {
+            Logger.log("UpdateManager disabled for bundle identity \(AppIdentity.bundleIdentifier)")
             canCheckForUpdates = false
-            updateStatusText = "Update checks disabled in development builds."
+            updateStatusText = "Update checks disabled for this app identity."
             return
         }
 
         updaterController.startUpdater()
         bindUpdaterState()
         bindPreferences()
-        updateStatusText = "Ready to check for updates."
+        refreshIdleStatusText()
         performLaunchUpdateCheckIfNeeded()
         rescheduleAutomaticChecks()
     }
@@ -74,11 +74,16 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
             .removeDuplicates()
             .sink { [weak self] _ in
                 self?.rescheduleAutomaticChecks()
+                self?.refreshIdleStatusText()
             }
             .store(in: &cancellables)
     }
 
     private func performLaunchUpdateCheckIfNeeded() {
+        guard preferences.updateCheckFrequency != .never else {
+            refreshIdleStatusText()
+            return
+        }
         guard preferences.shouldCheckForUpdatesOnLaunch() else { return }
         performBackgroundUpdateCheck()
     }
@@ -87,7 +92,10 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         updateCheckTimer?.invalidate()
         updateCheckTimer = nil
 
-        guard let interval = preferences.updateCheckFrequency.interval else { return }
+        guard let interval = preferences.updateCheckFrequency.interval else {
+            refreshIdleStatusText()
+            return
+        }
 
         let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -99,9 +107,13 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     private func performBackgroundUpdateCheck() {
+        guard preferences.updateCheckFrequency != .never else {
+            refreshIdleStatusText()
+            return
+        }
         guard updaterController.updater.canCheckForUpdates else { return }
         preferences.markUpdateCheckNow()
-        beginUpdateCheck(statusText: "Checking for updates...")
+        beginUpdateCheck(statusText: "Checking for updates in the background...")
         updaterController.updater.checkForUpdatesInBackground()
     }
 
@@ -110,32 +122,29 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         updateStatusText = statusText
     }
 
+    private func refreshIdleStatusText() {
+        guard !isCheckingForUpdates else { return }
+        if preferences.updateCheckFrequency == .never {
+            updateStatusText = "Background update checks are disabled until you enable them."
+        } else {
+            updateStatusText = "Background update checks are enabled (\(preferences.updateCheckFrequency.displayName.lowercased()))."
+        }
+    }
+
     private func finishUpdateCheckIfNeeded() {
         isCheckingForUpdates = false
     }
 
     nonisolated func feedURLString(for updater: SPUUpdater) -> String? {
-        let channel = Self.isBetaBuild ? "beta" : "stable"
-        let arch = Self.architectureSuffix
-        return "\(Self.preferredFeedBaseURL)/\(channel)-\(arch).xml"
-    }
-
-    nonisolated private static var isBetaBuild: Bool {
-        (Bundle.main.bundleIdentifier ?? "").hasSuffix(".beta")
-    }
-
-    nonisolated private static var usesTransitionBundleIdentifier: Bool {
-        switch Bundle.main.bundleIdentifier ?? "" {
-        case "pzc.Dockter", "pzc.Dockter.beta":
-            return true
-        default:
-            return false
-        }
-    }
-
-    nonisolated private static var preferredFeedBaseURL: String {
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? ""
+        let usesTransitionBundleIdentifier = bundleIdentifier == "pzc.Dockter"
+            || bundleIdentifier == "pzc.Dockter.beta"
+        let isBetaBuild = bundleIdentifier == "pzc.Dockmint.beta"
+            || bundleIdentifier == "pzc.Dockter.beta"
         let repository = usesTransitionBundleIdentifier ? "apotenza92/docktor" : "apotenza92/dockmint"
-        return "https://raw.githubusercontent.com/\(repository)/main/appcasts"
+        let channel = isBetaBuild ? "beta" : "stable"
+        let arch = Self.architectureSuffix
+        return "https://raw.githubusercontent.com/\(repository)/main/appcasts/\(channel)-\(arch).xml"
     }
 
     nonisolated private static var architectureSuffix: String {
@@ -143,14 +152,6 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         return "arm64"
         #else
         return "x64"
-        #endif
-    }
-
-    nonisolated private static var isDevelopmentBuild: Bool {
-        #if DEBUG
-        return true
-        #else
-        return false
         #endif
     }
 

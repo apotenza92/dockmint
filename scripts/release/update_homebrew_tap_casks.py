@@ -262,10 +262,13 @@ def render_stable_cask(
     "~/Library/Application Support/Docktor",
     "~/Library/Caches/pzc.Dockter",
     "~/Library/Caches/pzc.Dockmint",
+    "~/Library/Logs/Dockmint",
     "~/Library/Preferences/pzc.Dockter.plist",
     "~/Library/Preferences/pzc.Dockmint.plist",
     "~/Library/Saved Application State/pzc.Dockter.savedState",
     "~/Library/Saved Application State/pzc.Dockmint.savedState",
+    "~/Code/Dockmint/logs",
+    "~/Code/Docktor/logs",
   ]
 end
 '''
@@ -315,10 +318,13 @@ def render_beta_cask(
     "~/Library/Application Support/Docktor Beta",
     "~/Library/Caches/pzc.Dockter.beta",
     "~/Library/Caches/pzc.Dockmint.beta",
+    "~/Library/Logs/Dockmint",
     "~/Library/Preferences/pzc.Dockter.beta.plist",
     "~/Library/Preferences/pzc.Dockmint.beta.plist",
     "~/Library/Saved Application State/pzc.Dockter.beta.savedState",
     "~/Library/Saved Application State/pzc.Dockmint.beta.savedState",
+    "~/Code/Dockmint/logs",
+    "~/Code/Docktor/logs",
   ]
 end
 '''

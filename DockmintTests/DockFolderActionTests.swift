@@ -11,6 +11,8 @@ final class DockFolderActionTests: XCTestCase {
             preferences.folderClickAction.openInApplicationIdentifier,
             DockFolderOpenApplicationCatalog.dockIdentifier
         )
+        XCTAssertEqual(preferences.optionFolderClickAction, Preferences.shippedFolderDefaults.optionClick)
+        XCTAssertTrue(preferences.optionFolderClickAction.isFinderPassthrough)
     }
 
     func testResetFolderActionsRestoresDockDefault() {
@@ -26,6 +28,7 @@ final class DockFolderActionTests: XCTestCase {
 
         XCTAssertEqual(preferences.folderClickAction, Preferences.defaultFolderClickAction)
         XCTAssertFalse(preferences.folderClickAction.isFinderPassthrough)
+        XCTAssertEqual(preferences.optionFolderClickAction, Preferences.shippedFolderDefaults.optionClick)
     }
 
     func testLegacyStoredDockDefaultRemainsDock() {
@@ -42,6 +45,22 @@ final class DockFolderActionTests: XCTestCase {
 
         XCTAssertEqual(preferences.folderClickAction, Preferences.defaultFolderClickAction)
         XCTAssertEqual(defaults.string(forKey: "folderClickAction"), Preferences.defaultFolderClickAction.storageValue)
+    }
+
+    func testDeprecatedBringAllToFrontSettingsMigrateToSingleClickDefaults() {
+        let defaults = isolatedDefaults()
+        defaults.set(DockAction.bringAllToFront.rawValue, forKey: "clickAction")
+        defaults.set(DockAction.bringAllToFront.rawValue, forKey: "shiftScrollDownAction")
+        defaults.set(FirstClickBehavior.bringAllToFront.rawValue, forKey: "firstClickBehavior")
+
+        let preferences = Preferences(testingUserDefaults: defaults)
+
+        XCTAssertEqual(preferences.clickAction, .none)
+        XCTAssertEqual(preferences.shiftScrollDownAction, .activateApp)
+        XCTAssertEqual(preferences.firstClickBehavior, .activateApp)
+        XCTAssertEqual(defaults.string(forKey: "clickAction"), DockAction.none.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "shiftScrollDownAction"), DockAction.activateApp.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "firstClickBehavior"), FirstClickBehavior.activateApp.rawValue)
     }
 
     func testFinderPassthroughRequiresFinderAndAutomaticViewOnly() {

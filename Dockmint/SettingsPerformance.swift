@@ -78,6 +78,13 @@ enum SettingsPerformance {
         return Session(event: event, metadata: metadata)
     }
 
+    static func sectionMetadata(for pane: SettingsPane) -> [String: String] {
+        [
+            "pane": pane.rawValue,
+            "navigation_model": "single_page"
+        ]
+    }
+
     static func emit(_ label: String, metadata: [String: String] = [:]) {
         guard enabled else { return }
 

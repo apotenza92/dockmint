@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
 
-: "${BUNDLE_ID:=${DOCKTOR_BUNDLE_ID:-pzc.Dockter}}"
+: "${BUNDLE_ID:=${DOCKMINT_BUNDLE_ID:-${DOCKTOR_BUNDLE_ID:-pzc.Dockmint.dev}}}"
 : "${TEST_SELECTION_MODE:=deterministic}"
 : "${DOCKMINT_START_TIMEOUT_SECONDS:=${DOCKTOR_START_TIMEOUT_SECONDS:-12}}"
 : "${DOCKMINT_READY_LOG_MARKER:=${DOCKTOR_READY_LOG_MARKER:-Event tap started.}}"
 : "${TEST_ARTIFACT_ROOT:=${DOCKTOR_TEST_ARTIFACT_ROOT:-/tmp/dockmint-artifacts}}"
+
+if [[ -z "${DOCKMINT_PERSISTENT_LOG_ROOT:-}" ]]; then
+  case "$BUNDLE_ID" in
+    pzc.Dockmint.dev)
+      DOCKMINT_PERSISTENT_LOG_ROOT="$HOME/Library/Logs/Dockmint Dev"
+      ;;
+    *)
+      DOCKMINT_PERSISTENT_LOG_ROOT="$HOME/Library/Logs/Dockmint"
+      ;;
+  esac
+fi
 : "${MULTI_SPACE_TARGET_DOCK_ICON:=Brave Browser}"
 : "${MULTI_SPACE_TARGET_PROCESS:=Brave Browser}"
 : "${MULTI_SPACE_TARGET_BUNDLE:=com.brave.Browser}"
@@ -23,11 +34,23 @@ APP_EXECUTABLE_PATH="${APP_EXECUTABLE_PATH:-}"
 
 APP_PID=""
 TEST_ORIG_AUTOHIDE=""
+TEST_ORIG_WINDOW_TABBING_MODE="__uninitialized__"
 START_DOCKMINT_LAST_ERROR=""
 TEST_ARTIFACT_DIR=""
 TEST_MULTI_SPACE_TARGET_DOCK_ICON=""
 TEST_MULTI_SPACE_TARGET_PROCESS=""
 TEST_MULTI_SPACE_TARGET_BUNDLE=""
+
+export DOCKMINT_PERSISTENT_LOG_ROOT
+
+dockmint_persistent_log_root() {
+  printf '%s\n' "${DOCKMINT_PERSISTENT_LOG_ROOT%/}"
+}
+
+latest_dockmint_persistent_log() {
+  local log_root="${1:-$(dockmint_persistent_log_root)}"
+  ls -t "$log_root"/Dockmint-*.log 2>/dev/null | head -n 1 || true
+}
 
 log_contains() {
   local needle="$1"
@@ -73,15 +96,15 @@ require_tool() {
 
 discover_latest_debug_app_bundle() {
   local derived_data_root="$HOME/Library/Developer/Xcode/DerivedData"
-  local repo_debug_bundle="$PWD/.build/Build/Products/Debug/Dockmint.app"
-  local repo_debug_executable_path="Contents/MacOS/Dockmint"
+  local repo_debug_bundle="$PWD/.build/Build/Products/Debug/Dockmint Dev.app"
+  local repo_debug_executable_path="Contents/MacOS/Dockmint Dev"
   local -a candidates=()
   local xcode_settings=""
   local xcode_built_products_dir=""
   local xcode_full_product_name=""
   local xcode_executable_path=""
 
-  xcode_settings="$(xcodebuild -project Dockmint.xcodeproj -scheme Dockmint -configuration Debug -showBuildSettings 2>/dev/null || true)"
+  xcode_settings="$(xcodebuild -project Dockmint.xcodeproj -target Dockmint -configuration Debug -showBuildSettings 2>/dev/null || true)"
   if [[ -n "$xcode_settings" ]]; then
     xcode_built_products_dir="$(printf '%s\n' "$xcode_settings" | awk -F' = ' '/^[[:space:]]*BUILT_PRODUCTS_DIR = / { print $2; exit }')"
     xcode_full_product_name="$(printf '%s\n' "$xcode_settings" | awk -F' = ' '/^[[:space:]]*FULL_PRODUCT_NAME = / { print $2; exit }')"
@@ -102,7 +125,7 @@ discover_latest_debug_app_bundle() {
   if [[ -d "$derived_data_root" ]]; then
     while IFS= read -r candidate; do
       candidates+=("$candidate")
-    done < <(find "$derived_data_root" -type d -path "*/Build/Products/Debug/Dockmint.app" 2>/dev/null)
+    done < <(find "$derived_data_root" -type d -path "*/Build/Products/Debug/Dockmint Dev.app" 2>/dev/null)
   fi
 
   local latest_bundle=""
@@ -127,6 +150,33 @@ discover_latest_debug_app_bundle() {
   [[ -n "$latest_bundle" ]] && printf '%s\n' "$latest_bundle"
 }
 
+bundle_executable_relative_path() {
+  local bundle_path="$1"
+
+  if [[ -n "${APP_EXECUTABLE_PATH:-}" && -x "$bundle_path/$APP_EXECUTABLE_PATH" ]]; then
+    printf '%s\n' "$APP_EXECUTABLE_PATH"
+    return 0
+  fi
+
+  local executable_name
+  executable_name="$(plutil -extract CFBundleExecutable raw -o - "$bundle_path/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ -n "$executable_name" ]]; then
+    printf 'Contents/MacOS/%s\n' "$executable_name"
+    return 0
+  fi
+
+  if [[ -d "$bundle_path/Contents/MacOS" ]]; then
+    local discovered_executable
+    discovered_executable="$(find "$bundle_path/Contents/MacOS" -maxdepth 1 -type f -perm -111 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$discovered_executable" ]]; then
+      printf 'Contents/MacOS/%s\n' "$(basename "$discovered_executable")"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
 resolve_app_paths() {
   if [[ -n "${APP_BIN:-}" ]]; then
     if [[ ! -x "$APP_BIN" ]]; then
@@ -142,7 +192,8 @@ resolve_app_paths() {
       return 1
     fi
     APP_BUNDLE="$(cd "$APP_BUNDLE" && pwd -P)"
-    APP_BIN="$APP_BUNDLE/${APP_EXECUTABLE_PATH:-Contents/MacOS/Dockmint}"
+    APP_EXECUTABLE_PATH="$(bundle_executable_relative_path "$APP_BUNDLE" || true)"
+    APP_BIN="$APP_BUNDLE/${APP_EXECUTABLE_PATH:-Contents/MacOS/Dockmint Dev}"
   else
     local discovered_bundle
     discovered_bundle="$(discover_latest_debug_app_bundle || true)"
@@ -151,7 +202,8 @@ resolve_app_paths() {
       return 1
     fi
     APP_BUNDLE="$discovered_bundle"
-    APP_BIN="$APP_BUNDLE/${APP_EXECUTABLE_PATH:-Contents/MacOS/Dockmint}"
+    APP_EXECUTABLE_PATH="$(bundle_executable_relative_path "$APP_BUNDLE" || true)"
+    APP_BIN="$APP_BUNDLE/${APP_EXECUTABLE_PATH:-Contents/MacOS/Dockmint Dev}"
   fi
 
   if [[ ! -x "$APP_BIN" ]]; then
@@ -193,9 +245,72 @@ require_cliclick_bin() {
   resolve_cliclick_bin
 }
 
+require_macos_host() {
+  local host_os
+  host_os="$(uname -s 2>/dev/null || true)"
+  if [[ "$host_os" != "Darwin" ]]; then
+    echo "error: Dockmint GUI automation requires macOS (detected '$host_os')" >&2
+    return 1
+  fi
+}
+
+system_events_ui_scripting_enabled() {
+  osascript -e 'tell application "System Events" to return UI elements enabled' 2>/dev/null | tr '[:upper:]' '[:lower:]'
+}
+
+ensure_gui_scripting_ready() {
+  local enabled
+  enabled="$(system_events_ui_scripting_enabled || true)"
+  if [[ "$enabled" != "true" ]]; then
+    echo "error: GUI scripting is not available to System Events. Enable Accessibility for your terminal/agent host and rerun." >&2
+    return 1
+  fi
+}
+
+ensure_frontmost_process_query_ready() {
+  local frontmost_name
+  frontmost_name="$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>/dev/null || true)"
+  if [[ -z "$frontmost_name" || "$frontmost_name" == "missing value" ]]; then
+    echo "error: unable to query the frontmost macOS process; the host does not appear to be in a runnable GUI session." >&2
+    return 1
+  fi
+}
+
+ensure_persistent_log_root_ready() {
+  local log_root
+  log_root="$(dockmint_persistent_log_root)"
+  mkdir -p "$log_root"
+  if [[ ! -d "$log_root" || ! -w "$log_root" ]]; then
+    echo "error: Dockmint persistent log directory is not writable: $log_root" >&2
+    return 1
+  fi
+}
+
+ensure_dock_ui_ready() {
+  ensure_dock_ready || {
+    echo "error: Dock process did not become ready" >&2
+    return 1
+  }
+
+  local dock_item_count
+  dock_item_count="$(osascript -e 'tell application "System Events" to tell process "Dock" to count UI elements of list 1' 2>/dev/null || true)"
+  if [[ ! "$dock_item_count" =~ ^[0-9]+$ || "$dock_item_count" -lt 1 ]]; then
+    echo "error: unable to inspect Dock UI elements. Confirm the Dock is visible and Accessibility access is granted." >&2
+    return 1
+  fi
+}
+
+validate_cliclick_binary() {
+  "$CLICLICK_BIN" -V >/dev/null 2>&1 || {
+    echo "error: cliclick is installed but not runnable: $CLICLICK_BIN" >&2
+    return 1
+  }
+}
+
 run_test_preflight() {
   local needs_cliclick="${1:-false}"
 
+  require_macos_host
   require_tool osascript
   require_tool defaults
   require_tool grep
@@ -204,10 +319,18 @@ run_test_preflight() {
   require_tool plutil
   require_tool open
   require_tool screencapture
+  require_tool tail
+  require_tool mkdir
+  require_tool pgrep
   require_app_bin
+  ensure_persistent_log_root_ready
+  ensure_gui_scripting_ready
+  ensure_frontmost_process_query_ready
+  ensure_dock_ui_ready
 
   if [[ "$needs_cliclick" == "true" ]]; then
     require_cliclick_bin
+    validate_cliclick_binary
   fi
 }
 
@@ -276,6 +399,29 @@ restore_dock_state() {
   fi
 }
 
+capture_window_tabbing_mode() {
+  if [[ "${TEST_ORIG_WINDOW_TABBING_MODE:-__uninitialized__}" == "__uninitialized__" ]]; then
+    TEST_ORIG_WINDOW_TABBING_MODE="$(defaults read -g AppleWindowTabbingMode 2>/dev/null || echo "__missing__")"
+  fi
+}
+
+set_window_tabbing_mode() {
+  local mode="$1"
+  capture_window_tabbing_mode
+  defaults write -g AppleWindowTabbingMode -string "$mode" >/dev/null 2>&1 || true
+  sleep 0.2
+}
+
+restore_window_tabbing_mode() {
+  capture_window_tabbing_mode
+  if [[ "$TEST_ORIG_WINDOW_TABBING_MODE" == "__missing__" ]]; then
+    defaults delete -g AppleWindowTabbingMode >/dev/null 2>&1 || true
+  else
+    defaults write -g AppleWindowTabbingMode -string "$TEST_ORIG_WINDOW_TABBING_MODE" >/dev/null 2>&1 || true
+  fi
+  sleep 0.2
+}
+
 set_dock_autohide() {
   local enabled="$1"
   defaults write com.apple.dock autohide -bool "$enabled"
@@ -295,7 +441,22 @@ ensure_dock_ready() {
 }
 
 ensure_no_dockmint() {
-  pkill -x Dockmint >/dev/null 2>&1 || true
+  local raw_pids
+  raw_pids="$(osascript -e "tell application \"System Events\" to get unix id of every process whose bundle identifier is \"$BUNDLE_ID\"" 2>/dev/null || true)"
+  raw_pids="$(printf '%s' "$raw_pids" | tr ',' ' ')"
+
+  local pid
+  for pid in $raw_pids; do
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    kill "$pid" >/dev/null 2>&1 || true
+  done
+
+  sleep 0.2
+
+  for pid in $raw_pids; do
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    kill -9 "$pid" >/dev/null 2>&1 || true
+  done
 }
 
 start_dockmint() {
@@ -417,6 +578,11 @@ activate_finder() {
   sleep 0.25
 }
 
+activate_process_direct() {
+  local process_name="$1"
+  osascript -e "tell application \"$process_name\" to activate" >/dev/null 2>&1 || true
+}
+
 dock_icon_names() {
   ensure_dock_ready || { echo "error: Dock process not ready" >&2; return 1; }
   osascript -e 'tell application "System Events" to tell process "Dock" to get name of every UI element of list 1' \
@@ -457,8 +623,144 @@ process_window_count() {
   osascript -e "tell application \"System Events\" to tell process \"$process_name\" to get count of windows" 2>/dev/null || echo 0
 }
 
+wait_for_process_window_count_exact() {
+  local process_name="$1"
+  local expected_count="$2"
+  local timeout_seconds="${3:-8}"
+  local deadline=$((SECONDS + timeout_seconds))
+
+  while (( SECONDS <= deadline )); do
+    local count
+    count="$(process_window_count "$process_name")"
+    [[ "$count" =~ ^[0-9]+$ ]] || count=0
+    if (( count == expected_count )); then
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  return 1
+}
+
+wait_for_process_window_count_at_least() {
+  local process_name="$1"
+  local minimum_count="$2"
+  local timeout_seconds="${3:-8}"
+  local deadline=$((SECONDS + timeout_seconds))
+
+  while (( SECONDS <= deadline )); do
+    local count
+    count="$(process_window_count "$process_name")"
+    [[ "$count" =~ ^[0-9]+$ ]] || count=0
+    if (( count >= minimum_count )); then
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  return 1
+}
+
+dock_icon_name_for_bundle() {
+  local bundle_identifier="$1"
+  while IFS= read -r icon; do
+    local process_name bundle
+    process_name="$(process_name_for_dock_icon "$icon" || true)"
+    [[ -n "$process_name" ]] || continue
+    bundle="$(process_bundle_id "$process_name")"
+    [[ "$bundle" == "$bundle_identifier" ]] || continue
+    printf '%s\n' "$icon"
+    return 0
+  done < <(dock_icon_names)
+  return 1
+}
+
+prepare_finder_windows_exact() {
+  local desired_count="${1:-1}"
+  set_window_tabbing_mode manual
+  osascript <<OSA >/dev/null 2>&1 || return 1
+tell application "Finder"
+  activate
+  try
+    close every Finder window
+  end try
+  delay 0.3
+  repeat with i from 1 to ${desired_count}
+    set w to make new Finder window
+    set target of w to home
+  end repeat
+end tell
+OSA
+  wait_for_process_window_count_exact "Finder" "$desired_count" 8
+}
+
+prepare_safari_windows_exact() {
+  local desired_count="${1:-2}"
+  set_window_tabbing_mode manual
+  open -b "com.apple.Safari" >/dev/null 2>&1 || return 1
+  wait_for_process_running_by_bundle "com.apple.Safari" 8 || return 1
+  osascript <<OSA >/dev/null 2>&1 || return 1
+tell application "Safari"
+  activate
+  try
+    close every window
+  end try
+  delay 0.3
+  repeat with i from 1 to ${desired_count}
+    make new document
+  end repeat
+end tell
+OSA
+  wait_for_process_window_count_exact "Safari" "$desired_count" 8
+}
+
+builtin_single_window_dock_target() {
+  prepare_finder_windows_exact 1 || return 1
+  local process_name="Finder"
+  local bundle_identifier="com.apple.finder"
+  local icon_name
+  icon_name="$(dock_icon_name_for_bundle "$bundle_identifier")" || return 1
+  printf '%s|%s|%s\n' "$icon_name" "$process_name" "$bundle_identifier"
+}
+
+builtin_multi_window_dock_target() {
+  prepare_safari_windows_exact 3 || return 1
+  local process_name="Safari"
+  local bundle_identifier="com.apple.Safari"
+  local icon_name
+  icon_name="$(dock_icon_name_for_bundle "$bundle_identifier")" || return 1
+  printf '%s|%s|%s\n' "$icon_name" "$process_name" "$bundle_identifier"
+}
+
+lowercase_string() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+string_list_contains_ci() {
+  local raw_list="$1"
+  local needle="$2"
+  local needle_lc item item_lc
+
+  needle_lc="$(lowercase_string "$needle")"
+  while IFS= read -r item; do
+    item="$(printf '%s' "$item" | sed 's/^ *//; s/ *$//')"
+    [[ -n "$item" ]] || continue
+    item_lc="$(lowercase_string "$item")"
+    if [[ "$item_lc" == "$needle_lc" ]]; then
+      return 0
+    fi
+  done < <(printf '%s' "$raw_list" | tr ',;' '\n')
+
+  return 1
+}
+
 select_two_dock_test_apps() {
   local mode="${TEST_SELECTION_MODE:-deterministic}"
+  local default_excluded_processes="Dockmint,Dockmint Dev,Dockmint Beta,Finder,System Settings"
+  local default_excluded_bundles="com.apple.systempreferences"
+  local excluded_processes="${TEST_SELECTION_EXCLUDED_PROCESSES:-$default_excluded_processes}"
+  local excluded_bundles="${TEST_SELECTION_EXCLUDED_BUNDLES:-$default_excluded_bundles}"
+  local excluded_icons="${TEST_SELECTION_EXCLUDED_DOCK_ICONS:-}"
   local -a candidate_icons=()
   local -a candidate_procs=()
   local -a candidate_bundles=()
@@ -479,9 +781,12 @@ select_two_dock_test_apps() {
       continue
     fi
 
-    local proc_lc
-    proc_lc="$(printf '%s' "$proc" | tr '[:upper:]' '[:lower:]')"
-    if [[ "$proc_lc" == "dockmint" || "$proc_lc" == "finder" ]]; then
+    if string_list_contains_ci "$excluded_icons" "$icon"; then
+      rejected+=("icon='$icon' process='$proc' reason=excluded-icon")
+      continue
+    fi
+
+    if string_list_contains_ci "$excluded_processes" "$proc"; then
       rejected+=("icon='$icon' process='$proc' reason=excluded-process")
       continue
     fi
@@ -505,6 +810,11 @@ select_two_dock_test_apps() {
     bundle="$(process_bundle_id "$proc")"
     if [[ -z "$bundle" || "$bundle" == "missing value" ]]; then
       rejected+=("icon='$icon' process='$proc' reason=no-bundle-id")
+      continue
+    fi
+
+    if string_list_contains_ci "$excluded_bundles" "$bundle"; then
+      rejected+=("icon='$icon' process='$proc' bundle='$bundle' reason=excluded-bundle")
       continue
     fi
 
@@ -717,6 +1027,110 @@ dock_click() {
   dock_click_with_hold "$icon_name" 60
 }
 
+dock_item_menu_summary() {
+  local icon_name="$1"
+  DOCK_ITEM_TITLE="$icon_name" swift -e '
+import Foundation
+import AppKit
+import ApplicationServices
+
+func attr<T>(_ el: AXUIElement, _ key: String) -> T? {
+    var value: CFTypeRef?
+    let err = AXUIElementCopyAttributeValue(el, key as CFString, &value)
+    guard err == .success, let value else { return nil }
+    return value as? T
+}
+
+func dockItem(named title: String) -> AXUIElement? {
+    guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else { return nil }
+    let app = AXUIElementCreateApplication(dock.processIdentifier)
+    let roots: [AXUIElement] = attr(app, kAXChildrenAttribute) ?? []
+    guard let list = roots.first else { return nil }
+    let items: [AXUIElement] = attr(list, kAXChildrenAttribute) ?? []
+    return items.first { (attr($0, kAXTitleAttribute) as String?) == title }
+}
+
+guard let title = ProcessInfo.processInfo.environment["DOCK_ITEM_TITLE"],
+      let item = dockItem(named: title) else {
+    fputs("visible=missing\n", stderr)
+    exit(2)
+}
+
+guard let menu: AXUIElement = attr(item, "AXShownMenuUIElement") else {
+    print("visible=false")
+    exit(0)
+}
+
+let role: String = attr(menu, kAXRoleAttribute) ?? ""
+let menuItems: [AXUIElement] = attr(menu, kAXChildrenAttribute) ?? []
+let titles = menuItems.compactMap { (attr($0, kAXTitleAttribute) as String?)?.replacingOccurrences(of: "\n", with: " ") }
+print("visible=true")
+print("role=\(role)")
+print("itemCount=\(menuItems.count)")
+print("items=\(titles.joined(separator: " | "))")
+'
+}
+
+dock_item_menu_is_open() {
+  local icon_name="$1"
+  local summary
+  summary="$(dock_item_menu_summary "$icon_name" 2>/dev/null || true)"
+  [[ "$summary" == *$'visible=true'* ]]
+}
+
+dismiss_dock_item_context_menu() {
+  local icon_name="$1"
+  require_cliclick_bin
+
+  local frame
+  frame="$(dock_icon_frame "$icon_name")" || return 1
+
+  local icon_x icon_y icon_w icon_h
+  IFS=',' read -r icon_x icon_y icon_w icon_h <<<"$frame"
+
+  local orientation
+  orientation="$(defaults read com.apple.dock orientation 2>/dev/null || echo bottom)"
+
+  local click_x click_y
+  case "$orientation" in
+    left)
+      click_x=$((icon_x + icon_w + 40))
+      click_y=$((icon_y + icon_h / 2))
+      ;;
+    right)
+      click_x=$((icon_x - 40))
+      click_y=$((icon_y + icon_h / 2))
+      ;;
+    *)
+      click_x=$((icon_x + icon_w / 2))
+      click_y=$((icon_y - 60))
+      ;;
+  esac
+
+  (( click_x < 0 )) && click_x=0
+  (( click_y < 0 )) && click_y=0
+
+  "$CLICLICK_BIN" "c:${click_x},${click_y}"
+}
+
+assert_no_dock_item_context_menu() {
+  local icon_name="$1"
+  local label="$2"
+  local shell_log_file="${3:-}"
+  local persistent_log_file="${4:-}"
+
+  local summary
+  summary="$(dock_item_menu_summary "$icon_name" 2>/dev/null || true)"
+  if [[ "$summary" == *$'visible=true'* ]]; then
+    echo "  FAIL $label unexpected Dock context menu for '$icon_name'" >&2
+    printf '%s\n' "$summary" >&2
+    capture_gui_failure_artifacts "dock-context-menu-${label//[^[:alnum:]-]/-}" "$shell_log_file" "$persistent_log_file" >/dev/null 2>&1 || true
+    capture_dock_icon_snapshot "$icon_name" "dock-context-menu-${label//[^[:alnum:]-]/-}-icon" >/dev/null 2>&1 || true
+    return 1
+  fi
+  return 0
+}
+
 space_key_code() {
   local space_number="$1"
   case "$space_number" in
@@ -781,6 +1195,45 @@ artifact_path() {
     return 1
   fi
   printf '%s/%s.%s\n' "$TEST_ARTIFACT_DIR" "$label" "$extension"
+}
+
+backup_preferences_file() {
+  local output="$1"
+  defaults export "$BUNDLE_ID" - >"$output" 2>/dev/null || true
+}
+
+restore_preferences_file() {
+  local backup_file="$1"
+  if [[ -s "$backup_file" ]]; then
+    defaults import "$BUNDLE_ID" "$backup_file" >/dev/null 2>&1 || true
+  fi
+}
+
+copy_file_to_artifact() {
+  local source_file="$1"
+  local label="$2"
+  local extension="${3:-log}"
+  [[ -f "$source_file" ]] || return 0
+
+  local output
+  output="$(artifact_path "$label" "$extension")" || return 1
+  cp "$source_file" "$output"
+  printf '%s\n' "$output"
+}
+
+capture_gui_failure_artifacts() {
+  local label="$1"
+  local shell_log_file="${2:-}"
+  local persistent_log_file="${3:-}"
+
+  if [[ -z "${TEST_ARTIFACT_DIR:-}" ]]; then
+    init_artifact_dir dockmint-gui-failure >/dev/null
+  fi
+
+  capture_artifact_screenshot "${label}-screen" >/dev/null 2>&1 || true
+  record_frontmost_snapshot "${label}-frontmost" >/dev/null 2>&1 || true
+  [[ -n "$shell_log_file" ]] && copy_file_to_artifact "$shell_log_file" "${label}-shell-log" log >/dev/null 2>&1 || true
+  [[ -n "$persistent_log_file" ]] && copy_file_to_artifact "$persistent_log_file" "${label}-persistent-log" log >/dev/null 2>&1 || true
 }
 
 capture_artifact_screenshot() {

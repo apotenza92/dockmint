@@ -162,7 +162,10 @@ final class DockClickEventTap {
     private func recoverAfterTapTimeout() {
         resetInteractionState()
         timeoutPassThroughUntilUptime = ProcessInfo.processInfo.systemUptime + timeoutPassThroughCooldown
-        tapTimeoutHandler?()
+        let handler = tapTimeoutHandler
+        DispatchQueue.main.async {
+            handler?()
+        }
     }
 
     private func isTimeoutPassThroughCooldownActive() -> Bool {
