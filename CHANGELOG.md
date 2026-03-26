@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.2.9]
+
+- Reverted the experimental cross-space and App Exposé work back to the stable `v0.2.8` baseline.
+- Changed the shipped default for app Dock icon `Shift+Option+click` to `Quit App` for fresh installs and Reset App Actions to Defaults.
+
 ## [v0.2.8]
 
 - Reissued the onboarding and single-click App Exposé update after fixing Swift 6 actor-isolation build failures that blocked CI and signed release packaging for the `v0.2.7` tag.

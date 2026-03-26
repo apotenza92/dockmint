@@ -107,7 +107,7 @@ assert_pref_equals clickAction none
 assert_pref_equals firstClickBehavior appExpose
 assert_pref_equals firstClickShiftAction hideOthers
 assert_pref_equals firstClickOptionAction singleAppMode
-assert_pref_equals firstClickShiftOptionAction none
+assert_pref_equals firstClickShiftOptionAction quitApp
 if [[ "$(defaults read "$RELEASE_BUNDLE_ID" showOnStartup 2>/dev/null || echo "__missing__")" != "1" ]]; then
   echo "  FAIL expected release defaults domain to remain unchanged while validating dev isolation"
   exit 1

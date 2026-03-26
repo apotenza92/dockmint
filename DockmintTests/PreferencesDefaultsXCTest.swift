@@ -43,6 +43,8 @@ final class PreferencesDefaultsXCTest: XCTestCase {
 
         XCTAssertEqual(defaults.string(forKey: "clickAction"), Preferences.shippedAppActionDefaults.clickAction.rawValue)
         XCTAssertEqual(defaults.string(forKey: "firstClickBehavior"), Preferences.shippedAppActionDefaults.firstClickBehavior.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "firstClickShiftOptionAction"),
+                       Preferences.shippedModifierDefaults.firstClickShiftOptionAction.rawValue)
         XCTAssertEqual(defaults.object(forKey: "firstClickAppExposeRequiresMultipleWindows") as? Bool,
                        Preferences.shippedAppActionDefaults.firstClickAppExposeRequiresMultipleWindows)
         XCTAssertEqual(defaults.object(forKey: "clickAppExposeRequiresMultipleWindows") as? Bool,
@@ -90,6 +92,7 @@ final class PreferencesDefaultsXCTest: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "clickAction"), DockAction.none.rawValue)
         XCTAssertEqual(defaults.string(forKey: "shiftClickAction"), DockAction.none.rawValue)
         XCTAssertEqual(defaults.string(forKey: "optionClickAction"), DockAction.none.rawValue)
+        XCTAssertEqual(defaults.string(forKey: "firstClickShiftOptionAction"), DockAction.quitApp.rawValue)
         XCTAssertEqual(defaults.string(forKey: "shiftOptionClickAction"), DockAction.none.rawValue)
         XCTAssertEqual(defaults.object(forKey: "clickAppExposeRequiresMultipleWindows") as? Bool, false)
     }

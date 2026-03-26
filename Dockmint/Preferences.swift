@@ -771,7 +771,7 @@ final class Preferences: ObservableObject {
     static let shippedModifierDefaults = ModifierDefaults(
         firstClickShiftAction: .hideOthers,
         firstClickOptionAction: .singleAppMode,
-        firstClickShiftOptionAction: .none,
+        firstClickShiftOptionAction: .quitApp,
         shiftClickAction: .none,
         optionClickAction: .none,
         shiftOptionClickAction: .none,
