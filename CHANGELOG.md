@@ -6,6 +6,10 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.3.2]
+
+- Fixed the generated stable and beta app icon PNG exports to match the exact asset catalogue slot sizes again, which restores the shipped Finder and Applications icon after updating.
+
 ## [v0.3.1]
 
 - Fixed stale App Exposé tracking so same-app active Dock clicks reset cleanly after inactivity, while the dismissal state now expires based on the latest real interaction instead of a fixed timer.

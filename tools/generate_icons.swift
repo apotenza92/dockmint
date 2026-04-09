@@ -1,6 +1,8 @@
 #!/usr/bin/env swift
 
 import AppKit
+import ImageIO
+import UniformTypeIdentifiers
 
 struct IconSpec {
     let size: Int
@@ -151,15 +153,36 @@ func drawLeafGlyph(
     vein.stroke()
 }
 
-func drawIcon(size: Int, theme: IconTheme) -> NSImage {
-    let s = CGFloat(size)
-    let image = NSImage(size: NSSize(width: s, height: s))
+func drawIcon(size: Int, theme: IconTheme) throws -> NSBitmapImageRep {
+    let pixelsWide = size
+    let pixelsHigh = size
+    guard let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: pixelsWide,
+        pixelsHigh: pixelsHigh,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else {
+        throw NSError(domain: "DockmintIcon", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to create bitmap"])
+    }
 
-    image.lockFocus()
-    defer { image.unlockFocus() }
+    rep.size = NSSize(width: pixelsWide, height: pixelsHigh)
+
+    let s = CGFloat(size)
+    let canvas = NSRect(x: 0, y: 0, width: s, height: s)
+    let context = NSGraphicsContext(bitmapImageRep: rep)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = context
+    defer {
+        NSGraphicsContext.restoreGraphicsState()
+    }
 
     NSGraphicsContext.current?.imageInterpolation = .high
-    let canvas = NSRect(x: 0, y: 0, width: s, height: s)
     NSColor.clear.setFill()
     canvas.fill()
 
@@ -198,16 +221,20 @@ func drawIcon(size: Int, theme: IconTheme) -> NSImage {
         lineWidth: 2.0
     )
 
-    return image
+    return rep
 }
 
-func writePNG(_ image: NSImage, to url: URL) throws {
-    guard let tiff = image.tiffRepresentation,
-          let rep = NSBitmapImageRep(data: tiff),
-          let data = rep.representation(using: .png, properties: [:]) else {
-        throw NSError(domain: "DockmintIcon", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to encode PNG"])
+func writePNG(_ rep: NSBitmapImageRep, to url: URL) throws {
+    guard let cgImage = rep.cgImage else {
+        throw NSError(domain: "DockmintIcon", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create CGImage"])
     }
-    try data.write(to: url, options: .atomic)
+    guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+        throw NSError(domain: "DockmintIcon", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to create PNG destination"])
+    }
+    CGImageDestinationAddImage(destination, cgImage, nil)
+    guard CGImageDestinationFinalize(destination) else {
+        throw NSError(domain: "DockmintIcon", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to encode PNG"])
+    }
 }
 
 func appIconContentsJSON() -> String {
@@ -240,7 +267,7 @@ for iconSet in iconSets {
     try fm.createDirectory(at: iconsetURL, withIntermediateDirectories: true)
 
     for spec in specs {
-        let image = drawIcon(size: spec.size, theme: iconSet.theme)
+        let image = try drawIcon(size: spec.size, theme: iconSet.theme)
         let out = iconsetURL.appendingPathComponent(spec.filename)
         try writePNG(image, to: out)
         print("Wrote \(out.path)")
