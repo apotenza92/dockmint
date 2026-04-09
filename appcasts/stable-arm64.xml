@@ -5,19 +5,17 @@
     <description>Dockmint update feed (stable channel)</description>
     <language>en</language>
     <item>
-      <title>Version 0.3.1</title>
-      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.3.1</link>
-      <sparkle:version>300190000</sparkle:version>
-      <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>
+      <title>Version 0.3.2</title>
+      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.3.2</link>
+      <sparkle:version>300290000</sparkle:version>
+      <sparkle:shortVersionString>0.3.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/apotenza92/dockmint/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <description sparkle:format="plain-text"><![CDATA[- Fixed stale App Exposé tracking so same-app active Dock clicks reset cleanly after inactivity, while the dismissal state now expires based on the latest real interaction instead of a fixed timer.
-- Refreshed the stable and beta app icons with the new filled leaf treatment and updated the matching website icon exports.
-- Replaced the menu bar leaf with a new filled SVG-derived glyph and tuned its sizing for clearer 16-18pt menu bar legibility.]]></description>
-      <pubDate>Thu, 09 Apr 2026 05:19:40 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.3.1/Dockmint-v0.3.1-macos-arm64.zip"
-                 sparkle:edSignature="4Z6sUzpTfsIORYLrpNTeMuGoYgi9PqK8k04wofPNO6b/xukldzhRAuwfvuMgXM0bqN4dmtZM5vH+DS8P4UcoDw=="
-                 length="1350139"
+      <description sparkle:format="plain-text"><![CDATA[- Fixed the generated stable and beta app icon PNG exports to match the exact asset catalogue slot sizes again, which restores the shipped Finder and Applications icon after updating.]]></description>
+      <pubDate>Thu, 09 Apr 2026 06:28:03 +0000</pubDate>
+      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.3.2/Dockmint-v0.3.2-macos-arm64.zip"
+                 sparkle:edSignature="sp2kdL3Sqca2/Ll1RkXkSARSqgLiSMHznrg3mwGV25jN1pGScF/lfiWvntukGPwIxDP9r12X/kg9ywSLlSPCDg=="
+                 length="2940691"
                  type="application/octet-stream" />
     </item>
   </channel>
