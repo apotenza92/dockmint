@@ -16,8 +16,8 @@
 - Added App Exposé timing diagnostics and an automated timing benchmark for comparing cache and prewarm settings across real Dock click scenarios.]]></description>
       <pubDate>Fri, 05 Jun 2026 07:02:19 +0000</pubDate>
       <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.4.0/Dockmint-Beta-v0.4.0-macos-arm64.zip"
-                 sparkle:edSignature="rhRkxIFpZ1RBKw5fhzVUMLgy4DzLw87dIbywLNC2nFDZWUTCskgUOushFwpgxEmZMs22j7K2LHmi7gqtdmi8Aw=="
-                 length="2964520"
+                 sparkle:edSignature="1HmwSR6L5t+vtCeu8BXK6VWVoNDzudyYI+qCLEjv6TOLt8DmJMCPJb2mRJMjNCuuD3EVEIPiUJG6hobN9nFkAw=="
+                 length="2963987"
                  type="application/octet-stream" />
     </item>
   </channel>
