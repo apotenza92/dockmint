@@ -1688,6 +1688,11 @@ final class DockExposeCoordinator: ObservableObject {
             Logger.log("APP_EXPOSE_DECISION: firstClick appExpose bundle=\(bundleIdentifier) forceFallback=\(forceActivateFallback) windowsNow=\(windowCountNow) diagnostics=\(diagnostics.summary)")
             if forceActivateFallback {
                 Logger.log("APP_EXPOSE_DECISION: firstClick forced fallback for \(bundleIdentifier); allowing Dock activation")
+                if preferPrewarmedAppExposeCount {
+                    return performConsumedAppExposeFallbackActivation(bundleIdentifier: bundleIdentifier,
+                                                                      windowCount: windowCountNow,
+                                                                      reason: "forcedFallback")
+                }
                 scheduleDockActivationAssertionIfNeeded(for: bundleIdentifier,
                                                         frontmostBefore: frontmostBefore,
                                                         reason: "forcedFallback")
@@ -1695,6 +1700,11 @@ final class DockExposeCoordinator: ObservableObject {
             }
             if windowCountNow == 0 {
                 Logger.log("APP_EXPOSE_DECISION: firstClick no-window fallback for \(bundleIdentifier); allowing Dock activation")
+                if preferPrewarmedAppExposeCount {
+                    return performConsumedAppExposeFallbackActivation(bundleIdentifier: bundleIdentifier,
+                                                                      windowCount: windowCountNow,
+                                                                      reason: "noWindows")
+                }
                 scheduleDockActivationAssertionIfNeeded(for: bundleIdentifier,
                                                         frontmostBefore: frontmostBefore,
                                                         reason: "noWindows")
@@ -1705,6 +1715,11 @@ final class DockExposeCoordinator: ObservableObject {
                                                windowCountHint: nil,
                                                preferPrewarmed: preferPrewarmedAppExposeCount) else {
                 Logger.log("APP_EXPOSE_DECISION: firstClick appExpose skipped by multiple-window gate for \(bundleIdentifier)")
+                if preferPrewarmedAppExposeCount {
+                    return performConsumedAppExposeFallbackActivation(bundleIdentifier: bundleIdentifier,
+                                                                      windowCount: windowCountNow,
+                                                                      reason: "multipleWindowsGate")
+                }
                 scheduleDockActivationAssertionIfNeeded(for: bundleIdentifier,
                                                         frontmostBefore: frontmostBefore,
                                                         reason: "multipleWindowsGate")
@@ -2630,6 +2645,28 @@ final class DockExposeCoordinator: ObservableObject {
 
         _ = WindowManager.activateAndShowMainWindow(bundleIdentifier: bundleIdentifier)
         resetExposeTracking()
+        return true
+    }
+
+    private func performConsumedAppExposeFallbackActivation(bundleIdentifier: String,
+                                                           windowCount: Int,
+                                                           reason: String) -> Bool {
+        Logger.debug("APP_EXPOSE_DECISION: consumed first-click App Exposé fallback activating \(bundleIdentifier) reason=\(reason) windows=\(windowCount)")
+        if WindowManager.isAppHidden(bundleIdentifier: bundleIdentifier) {
+            _ = WindowManager.unhideApp(bundleIdentifier: bundleIdentifier)
+        }
+        if windowCount > 0 {
+            _ = WindowManager.activateAndShowMainWindow(bundleIdentifier: bundleIdentifier)
+        } else {
+            launchApp(bundleIdentifier: bundleIdentifier)
+            if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) {
+                _ = WindowManager.activate(app)
+            }
+        }
+        resetExposeTracking()
+        recordActionExecution(action: .activateApp,
+                              bundle: bundleIdentifier,
+                              source: "consumedAppExposeFallback:\(reason)")
         return true
     }
 
