@@ -5,19 +5,17 @@
     <description>Dockmint update feed (beta channel)</description>
     <language>en</language>
     <item>
-      <title>Version 0.4.0</title>
-      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.4.0</link>
-      <sparkle:version>400090000</sparkle:version>
-      <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
+      <title>Version 0.4.1</title>
+      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.4.1</link>
+      <sparkle:version>400190000</sparkle:version>
+      <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/apotenza92/dockmint/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <description sparkle:format="plain-text"><![CDATA[- Made App Exposé window counting cross-Space aware, so the `requires multiple windows` gate can detect windows spread across Mission Control Spaces while preserving current-Space-only behaviour for minimise, restore, and bring-to-front actions.
-- Improved App Exposé click responsiveness with mouse-down prewarming, short-lived diagnostics caching, reusable CG window snapshots, lazy Space lookups, and cached related-process discovery.
-- Added App Exposé timing diagnostics and an automated timing benchmark for comparing cache and prewarm settings across real Dock click scenarios.]]></description>
-      <pubDate>Fri, 05 Jun 2026 07:02:19 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.4.0/Dockmint-Beta-v0.4.0-macos-x64.zip"
-                 sparkle:edSignature="LtOkG846Pyn7liFMnlAqYnTwGzAano8lR8kJsKscmU5JA8/dg+Gbe7kiy+9SpymskkZFcCDZtaveIkqI4s2rCg=="
-                 length="2989290"
+      <description sparkle:format="plain-text"><![CDATA[- Made App Exposé and window-count diagnostic logging quiet by default in shipped builds, with detailed diagnostics emitted only when `Save diagnostic logs` or the debug log override is enabled.]]></description>
+      <pubDate>Fri, 05 Jun 2026 07:33:15 +0000</pubDate>
+      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.4.1/Dockmint-Beta-v0.4.1-macos-x64.zip"
+                 sparkle:edSignature="g99bU/KkjohsXsvdO+qdEYhU9JvS8P/B2cQwGf8GiNqXHkjUsy3/zKsauJ+MRLfxLvmhp36OmtvpazRxVpNyAQ=="
+                 length="2988956"
                  type="application/octet-stream" />
     </item>
   </channel>
