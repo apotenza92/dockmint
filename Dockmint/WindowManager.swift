@@ -22,6 +22,51 @@ enum WindowManager {
         let isMinimized: Bool
     }
 
+    struct AppExposeWindowCountDiagnostics {
+        let bundleIdentifier: String
+        let processIdentifier: pid_t
+        let axCount: Int
+        let cgsCrossSpaceCount: Int
+        let finalCount: Int
+        let usedFallbackOrAugmentation: Bool
+        let queryDurationMs: Int
+        let phaseSummary: String?
+
+        var summary: String {
+            var parts = "bundle=\(bundleIdentifier) pid=\(processIdentifier) ax=\(axCount) cgsCrossSpace=\(cgsCrossSpaceCount) final=\(finalCount) fallbackOrAugmented=\(usedFallbackOrAugmentation) durationMs=\(queryDurationMs)"
+            if let phaseSummary, !phaseSummary.isEmpty {
+                parts += " phases=[\(phaseSummary)]"
+            }
+            return parts
+        }
+    }
+
+    private struct AppExposeCountPhaseTimings {
+        var axMs = 0
+        var axFilterMs = 0
+        var managedSpacesMs = 0
+        var cgsWindowIDsMs = 0
+        var relatedPIDsMs = 0
+        var cgEntriesMs = 0
+        var activeSpacesMs = 0
+        var cgsFilterMs = 0
+        var scriptMs = 0
+
+        var summary: String {
+            [
+                "ax=\(axMs)",
+                "axFilter=\(axFilterMs)",
+                "managedSpaces=\(managedSpacesMs)",
+                "cgsIDs=\(cgsWindowIDsMs)",
+                "relatedPIDs=\(relatedPIDsMs)",
+                "cgEntries=\(cgEntriesMs)",
+                "activeSpaces=\(activeSpacesMs)",
+                "cgsFilter=\(cgsFilterMs)",
+                "script=\(scriptMs)"
+            ].joined(separator: ",")
+        }
+    }
+
     private struct WindowQueryCacheEntry<Value> {
         let value: Value
         let expiresAt: Date
@@ -32,62 +77,161 @@ enum WindowManager {
 
         init() {
             let center = NSWorkspace.shared.notificationCenter
-            let invalidateForBundle: (Notification) -> Void = { notification in
+            let invalidateWindowsAndRelatedProcesses: (Notification) -> Void = { notification in
                 let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-                WindowManager.invalidateWindowQueryCache(bundleIdentifier: app?.bundleIdentifier)
+                WindowManager.invalidateWindowQueryCache(bundleIdentifier: app?.bundleIdentifier,
+                                                         includeRelatedProcessIDs: true)
+            }
+            let invalidateWindowsOnly: (Notification) -> Void = { notification in
+                let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                WindowManager.invalidateWindowQueryCache(bundleIdentifier: app?.bundleIdentifier,
+                                                         includeRelatedProcessIDs: false)
             }
 
             observers.append(center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
                                                 object: nil,
                                                 queue: .main,
-                                                using: invalidateForBundle))
+                                                using: invalidateWindowsAndRelatedProcesses))
             observers.append(center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
                                                 object: nil,
                                                 queue: .main,
-                                                using: invalidateForBundle))
+                                                using: invalidateWindowsAndRelatedProcesses))
             observers.append(center.addObserver(forName: NSWorkspace.didHideApplicationNotification,
                                                 object: nil,
                                                 queue: .main,
-                                                using: invalidateForBundle))
+                                                using: invalidateWindowsOnly))
             observers.append(center.addObserver(forName: NSWorkspace.didUnhideApplicationNotification,
                                                 object: nil,
                                                 queue: .main,
-                                                using: invalidateForBundle))
+                                                using: invalidateWindowsOnly))
             observers.append(center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                                                 object: nil,
                                                 queue: .main,
-                                                using: invalidateForBundle))
+                                                using: invalidateWindowsOnly))
             observers.append(center.addObserver(forName: NSWorkspace.didDeactivateApplicationNotification,
                                                 object: nil,
                                                 queue: .main,
-                                                using: invalidateForBundle))
+                                                using: invalidateWindowsOnly))
         }
     }
 
-    private static let windowQueryCacheTTL: TimeInterval = 0.15
+    private static let windowQueryCacheTTL: TimeInterval = timeIntervalFlag(
+        primary: "DOCKMINT_WINDOW_QUERY_CACHE_TTL",
+        defaultValue: 0.5
+    )
+    private static let relatedProcessIDsCacheTTL: TimeInterval = timeIntervalFlag(
+        primary: "DOCKMINT_RELATED_PROCESS_IDS_CACHE_TTL",
+        defaultValue: 60.0
+    )
     private static let windowQueryCacheLock = NSLock()
     private static var totalWindowCountCache: [String: WindowQueryCacheEntry<Int>] = [:]
+    private static var appExposeWindowCountCache: [String: WindowQueryCacheEntry<AppExposeWindowCountDiagnostics>] = [:]
     private static var hasVisibleWindowsCache: [String: WindowQueryCacheEntry<Bool>] = [:]
+    private static var relatedProcessIDsCache: [String: WindowQueryCacheEntry<Set<pid_t>>] = [:]
     private static let windowQueryCacheObserver = WindowQueryCacheObserver()
+    private static let appExposePrewarmQueue = DispatchQueue(label: "pzc.Dockmint.appExposeWindowCountPrewarm",
+                                                             qos: .userInitiated)
+    private static var appExposePrewarmInFlight: Set<String> = []
+    private static let appExposePrewarmWaitTimeout: TimeInterval = timeIntervalFlag(
+        primary: "DOCKMINT_APP_EXPOSE_PREWARM_WAIT_TIMEOUT",
+        defaultValue: 0.03
+    )
+    private static let appExposePrewarmWaitPollInterval: TimeInterval = timeIntervalFlag(
+        primary: "DOCKMINT_APP_EXPOSE_PREWARM_WAIT_POLL_INTERVAL",
+        defaultValue: 0.002
+    )
 
-    static func invalidateWindowQueryCache(bundleIdentifier: String? = nil) {
+    private static func timeIntervalFlag(primary: String,
+                                         defaultValue: TimeInterval,
+                                         minimumValue: TimeInterval = 0,
+                                         maximumValue: TimeInterval = 300) -> TimeInterval {
+        guard let rawValue = AppIdentity.flagValue(primary: primary),
+              let parsed = TimeInterval(rawValue),
+              parsed.isFinite else {
+            return defaultValue
+        }
+        return min(max(parsed, minimumValue), maximumValue)
+    }
+
+    static func invalidateWindowQueryCache(bundleIdentifier: String? = nil,
+                                           includeRelatedProcessIDs: Bool = false) {
         _ = windowQueryCacheObserver
         windowQueryCacheLock.lock()
         defer { windowQueryCacheLock.unlock() }
 
         if let bundleIdentifier {
             totalWindowCountCache.removeValue(forKey: bundleIdentifier)
+            appExposeWindowCountCache.removeValue(forKey: bundleIdentifier)
             hasVisibleWindowsCache.removeValue(forKey: bundleIdentifier)
+            if includeRelatedProcessIDs {
+                relatedProcessIDsCache.removeValue(forKey: bundleIdentifier)
+            }
+            appExposePrewarmInFlight.remove(bundleIdentifier)
             return
         }
 
         totalWindowCountCache.removeAll()
+        appExposeWindowCountCache.removeAll()
         hasVisibleWindowsCache.removeAll()
+        if includeRelatedProcessIDs {
+            relatedProcessIDsCache.removeAll()
+        }
+        appExposePrewarmInFlight.removeAll()
+    }
+
+    static func prewarmAppExposeWindowCount(bundleIdentifier: String) {
+        _ = windowQueryCacheObserver
+        let now = Date()
+
+        windowQueryCacheLock.lock()
+        if let entry = appExposeWindowCountCache[bundleIdentifier], entry.expiresAt > now {
+            windowQueryCacheLock.unlock()
+            return
+        }
+        guard !appExposePrewarmInFlight.contains(bundleIdentifier) else {
+            windowQueryCacheLock.unlock()
+            return
+        }
+        appExposePrewarmInFlight.insert(bundleIdentifier)
+        windowQueryCacheLock.unlock()
+
+        appExposePrewarmQueue.async {
+            let diagnostics = appExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier)
+            Logger.debug("APP_EXPOSE_WINDOW_COUNT: prewarmed \(diagnostics.summary)")
+
+            windowQueryCacheLock.lock()
+            appExposePrewarmInFlight.remove(bundleIdentifier)
+            windowQueryCacheLock.unlock()
+        }
+    }
+
+    static func appExposeWindowCountDiagnosticsAfterPrewarmIfAvailable(bundleIdentifier: String) -> AppExposeWindowCountDiagnostics {
+        _ = windowQueryCacheObserver
+        let deadline = Date().addingTimeInterval(appExposePrewarmWaitTimeout)
+
+        while Date() < deadline {
+            if let diagnostics = cachedAppExposeWindowCountDiagnosticsIfAvailable(for: bundleIdentifier) {
+                return diagnostics
+            }
+
+            windowQueryCacheLock.lock()
+            let isPrewarming = appExposePrewarmInFlight.contains(bundleIdentifier)
+            windowQueryCacheLock.unlock()
+
+            guard isPrewarming else {
+                break
+            }
+
+            Thread.sleep(forTimeInterval: appExposePrewarmWaitPollInterval)
+        }
+
+        return appExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier)
     }
 
     private static func cachedWindowQueryValue<Value>(
         for bundleIdentifier: String,
         cache: inout [String: WindowQueryCacheEntry<Value>],
+        ttl: TimeInterval = windowQueryCacheTTL,
         compute: () -> Value
     ) -> Value {
         _ = windowQueryCacheObserver
@@ -105,9 +249,50 @@ enum WindowManager {
 
         windowQueryCacheLock.lock()
         cache[bundleIdentifier] = WindowQueryCacheEntry(value: value,
-                                                        expiresAt: now.addingTimeInterval(windowQueryCacheTTL))
+                                                        expiresAt: now.addingTimeInterval(ttl))
         windowQueryCacheLock.unlock()
         return value
+    }
+
+    private static func cachedAppExposeWindowCountDiagnostics(
+        for bundleIdentifier: String,
+        compute: () -> AppExposeWindowCountDiagnostics
+    ) -> AppExposeWindowCountDiagnostics {
+        _ = windowQueryCacheObserver
+        let now = Date()
+
+        windowQueryCacheLock.lock()
+        if let entry = appExposeWindowCountCache[bundleIdentifier], entry.expiresAt > now {
+            let value = entry.value
+            windowQueryCacheLock.unlock()
+            return value
+        }
+        windowQueryCacheLock.unlock()
+
+        let value = compute()
+
+        windowQueryCacheLock.lock()
+        appExposeWindowCountCache[bundleIdentifier] = WindowQueryCacheEntry(
+            value: value,
+            expiresAt: now.addingTimeInterval(windowQueryCacheTTL)
+        )
+        windowQueryCacheLock.unlock()
+        return value
+    }
+
+    private static func cachedAppExposeWindowCountDiagnosticsIfAvailable(
+        for bundleIdentifier: String
+    ) -> AppExposeWindowCountDiagnostics? {
+        _ = windowQueryCacheObserver
+        let now = Date()
+
+        windowQueryCacheLock.lock()
+        defer { windowQueryCacheLock.unlock() }
+
+        guard let entry = appExposeWindowCountCache[bundleIdentifier], entry.expiresAt > now else {
+            return nil
+        }
+        return entry.value
     }
 
     @discardableResult
@@ -322,11 +507,77 @@ enum WindowManager {
         }
     }
 
+    /// Count windows for App Exposé gating across all Mission Control Spaces.
+    static func appExposeWindowCount(bundleIdentifier: String) -> Int {
+        appExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier).finalCount
+    }
+
+    static func appExposeWindowCountDiagnostics(bundleIdentifier: String) -> AppExposeWindowCountDiagnostics {
+        cachedAppExposeWindowCountDiagnostics(for: bundleIdentifier) {
+            let startedAt = CFAbsoluteTimeGetCurrent()
+            guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
+                return AppExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier,
+                                                       processIdentifier: 0,
+                                                       axCount: 0,
+                                                       cgsCrossSpaceCount: 0,
+                                                       finalCount: 0,
+                                                       usedFallbackOrAugmentation: false,
+                                                       queryDurationMs: Int((CFAbsoluteTimeGetCurrent() - startedAt) * 1000),
+                                                       phaseSummary: nil)
+            }
+
+            var phases = AppExposeCountPhaseTimings()
+            var phaseStartedAt = CFAbsoluteTimeGetCurrent()
+            let rawCGEntries = allCGWindowEntries()
+            let candidates = windowCandidates(for: app,
+                                              includeSpaceIDs: false,
+                                              rawCGEntries: rawCGEntries)
+            phases.axMs = Int((CFAbsoluteTimeGetCurrent() - phaseStartedAt) * 1000)
+
+            phaseStartedAt = CFAbsoluteTimeGetCurrent()
+            let axWindowIDs = Set(candidates.compactMap(\.cgWindowID))
+            let strictAXCount = candidates.filter {
+                shouldIncludeGlobalStandardCandidate($0, bundleIdentifier: app.bundleIdentifier)
+            }.count
+            let axCount = strictAXCount > 0 ? strictAXCount : relaxedAppExposeAXWindowCount(from: candidates)
+            phases.axFilterMs = Int((CFAbsoluteTimeGetCurrent() - phaseStartedAt) * 1000)
+
+            let cgsCount = axCount >= 2
+                ? axCount
+                : cgsCrossSpaceStandardWindowCount(for: app,
+                                                   excludingAXWindowIDs: axWindowIDs,
+                                                   rawCGEntries: rawCGEntries,
+                                                   stopAt: 2,
+                                                   phases: &phases)
+            let scriptableCount: Int
+            if axCount == 0 && cgsCount == 0 {
+                phaseStartedAt = CFAbsoluteTimeGetCurrent()
+                scriptableCount = scriptableApplicationWindowCount(bundleIdentifier: bundleIdentifier)
+                phases.scriptMs = Int((CFAbsoluteTimeGetCurrent() - phaseStartedAt) * 1000)
+            } else {
+                scriptableCount = 0
+            }
+            let finalCount = min(max(axCount, cgsCount, scriptableCount), 2)
+            let usedFallbackOrAugmentation = cgsCount > axCount || scriptableCount > axCount
+
+            let diagnostics = AppExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier,
+                                                              processIdentifier: app.processIdentifier,
+                                                              axCount: axCount,
+                                                              cgsCrossSpaceCount: cgsCount,
+                                                              finalCount: finalCount,
+                                                              usedFallbackOrAugmentation: usedFallbackOrAugmentation,
+                                                              queryDurationMs: Int((CFAbsoluteTimeGetCurrent() - startedAt) * 1000),
+                                                              phaseSummary: phases.summary)
+            Logger.debug("APP_EXPOSE_WINDOW_COUNT: \(diagnostics.summary)")
+            return diagnostics
+        }
+    }
+
     /// True when the app currently reports at least two windows.
     static func hasMultipleWindowsOpen(bundleIdentifier: String) -> Bool {
-        totalWindowCount(bundleIdentifier: bundleIdentifier) >= 2
+        appExposeWindowCount(bundleIdentifier: bundleIdentifier) >= 2
     }
-    
+
     /// Get the main window of an app
     static func getMainWindow(bundleIdentifier: String) -> AXUIElement? {
         guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
@@ -351,7 +602,7 @@ enum WindowManager {
         
         return (windowRef as! AXUIElement)
     }
-    
+
     /// Activate an app and show its main window
     static func activateAndShowMainWindow(bundleIdentifier: String) -> Bool {
         // First, activate the app
@@ -627,20 +878,24 @@ enum WindowManager {
 
     private static func currentSpaceStandardWindows(for app: NSRunningApplication) -> [AXUIElement] {
         let activeSpaceIDs = currentActiveSpaceIDs()
-        return windowCandidates(for: app)
+        return windowCandidates(for: app, includeSpaceIDs: true)
             .filter { shouldIncludeCurrentSpaceStandardCandidate($0,
                                                                  bundleIdentifier: app.bundleIdentifier,
                                                                  activeSpaceIDs: activeSpaceIDs) }
             .map(\.axWindow)
     }
 
-    private static func windowCandidates(for app: NSRunningApplication) -> [WindowCandidate] {
-        let cgEntries = cgWindowEntries(for: app.processIdentifier)
+    private static func windowCandidates(for app: NSRunningApplication,
+                                         includeSpaceIDs: Bool = true,
+                                         rawCGEntries: [[String: AnyObject]]? = nil) -> [WindowCandidate] {
+        let cgEntries = cgWindowEntries(for: app.processIdentifier,
+                                        in: rawCGEntries ?? allCGWindowEntries())
         var usedWindowIDs = Set<CGWindowID>()
 
         return rawAppWindows(for: app).compactMap { window in
             makeWindowCandidate(window,
                                 cgEntries: cgEntries,
+                                includeSpaceIDs: includeSpaceIDs,
                                 usedWindowIDs: &usedWindowIDs)
         }
     }
@@ -656,6 +911,49 @@ enum WindowManager {
         }
 
         return true
+    }
+
+    private static func relaxedAppExposeAXWindowCount(from candidates: [WindowCandidate]) -> Int {
+        let count = candidates.filter { candidate in
+            if candidate.isMinimized {
+                return false
+            }
+
+            if !passesGeneralCandidateValidation(candidate) {
+                return false
+            }
+
+            return true
+        }.count
+
+        return count >= 2 ? count : 0
+    }
+
+    private static func scriptableApplicationWindowCount(bundleIdentifier: String) -> Int {
+        let escapedBundleIdentifier = bundleIdentifier.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let source = """
+        tell application id "\(escapedBundleIdentifier)"
+          try
+            return count of windows
+          on error
+            return 0
+          end try
+        end tell
+        """
+
+        var error: NSDictionary?
+        guard let descriptor = NSAppleScript(source: source)?.executeAndReturnError(&error),
+              descriptor.int32Value > 0 else {
+            if let error {
+                Logger.debug("APP_EXPOSE_WINDOW_COUNT: scriptable fallback failed for \(bundleIdentifier): \(error)")
+            }
+            return 0
+        }
+
+        let count = Int(descriptor.int32Value)
+        Logger.debug("APP_EXPOSE_WINDOW_COUNT: scriptable fallback bundle=\(bundleIdentifier) count=\(count)")
+        return count
     }
 
     private static func shouldIncludeGlobalStandardWindow(_ window: AXUIElement,
@@ -765,6 +1063,7 @@ enum WindowManager {
 
     private static func makeWindowCandidate(_ window: AXUIElement,
                                             cgEntries: [[String: AnyObject]],
+                                            includeSpaceIDs: Bool,
                                             usedWindowIDs: inout Set<CGWindowID>) -> WindowCandidate? {
         let resolvedWindowID = resolveCGWindowID(for: window,
                                                  cgEntries: cgEntries,
@@ -776,7 +1075,9 @@ enum WindowManager {
         let isOnScreen = matchingEntry.flatMap { ($0[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue } ?? false
         let subrole = stringAttribute(window, attribute: kAXSubroleAttribute as CFString)
         let isMinimized = isWindowMinimized(window)
-        let spaceIDs = resolvedWindowID.map(WindowSpacePrivateApis.spaces(for:)) ?? []
+        let spaceIDs = includeSpaceIDs
+            ? (resolvedWindowID.map(WindowSpacePrivateApis.spaces(for:)) ?? [])
+            : []
 
         return WindowCandidate(axWindow: window,
                                cgWindowID: resolvedWindowID,
@@ -790,15 +1091,177 @@ enum WindowManager {
     }
 
     private static func cgWindowEntries(for pid: pid_t) -> [[String: AnyObject]] {
-        let rawEntries = CGWindowListCopyWindowInfo([.excludeDesktopElements], kCGNullWindowID) as? [[String: AnyObject]] ?? []
-        return rawEntries.filter { entry in
+        cgWindowEntries(for: pid, in: allCGWindowEntries())
+    }
+
+    private static func cgWindowEntries(for pid: pid_t,
+                                        in entries: [[String: AnyObject]]) -> [[String: AnyObject]] {
+        entries.filter { entry in
             let ownerPID = (entry[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0
             return ownerPID == pid
         }
     }
 
+    private static func cgsCrossSpaceStandardWindowCount(for app: NSRunningApplication,
+                                                         excludingAXWindowIDs axWindowIDs: Set<CGWindowID>,
+                                                         rawCGEntries: [[String: AnyObject]]? = nil,
+                                                         stopAt: Int? = nil,
+                                                         phases: inout AppExposeCountPhaseTimings) -> Int {
+        var phaseStartedAt = CFAbsoluteTimeGetCurrent()
+        let managedSpaceIDs = WindowSpacePrivateApis.managedSpaceIDs()
+        phases.managedSpacesMs = Int((CFAbsoluteTimeGetCurrent() - phaseStartedAt) * 1000)
+        guard !managedSpaceIDs.isEmpty else {
+            return 0
+        }
+
+        phaseStartedAt = CFAbsoluteTimeGetCurrent()
+        let cgsWindowIDs = WindowSpacePrivateApis.windowIDs(in: managedSpaceIDs)
+        phases.cgsWindowIDsMs = Int((CFAbsoluteTimeGetCurrent() - phaseStartedAt) * 1000)
+        guard !cgsWindowIDs.isEmpty else {
+            return 0
+        }
+
+        phaseStartedAt = CFAbsoluteTimeGetCurrent()
+        let targetPIDs = relatedProcessIDs(for: app)
+        phases.relatedPIDsMs = Int((CFAbsoluteTimeGetCurrent() - phaseStartedAt) * 1000)
+
+        phaseStartedAt = CFAbsoluteTimeGetCurrent()
+        let rawCGEntries = rawCGEntries ?? allCGWindowEntries()
+        let entriesByWindowID = Dictionary(uniqueKeysWithValues: cgWindowEntries(for: targetPIDs, in: rawCGEntries).compactMap { entry -> (CGWindowID, [String: AnyObject])? in
+            let windowID = CGWindowID((entry[kCGWindowNumber as String] as? NSNumber)?.uint32Value ?? 0)
+            guard windowID != 0 else { return nil }
+            return (windowID, entry)
+        })
+        phases.cgEntriesMs = Int((CFAbsoluteTimeGetCurrent() - phaseStartedAt) * 1000)
+
+        var activeSpaceIDs: Set<Int>?
+        func resolvedActiveSpaceIDs() -> Set<Int> {
+            if let activeSpaceIDs {
+                return activeSpaceIDs
+            }
+            let phaseStartedAt = CFAbsoluteTimeGetCurrent()
+            let resolved = currentActiveSpaceIDs(from: rawCGEntries)
+            phases.activeSpacesMs = Int((CFAbsoluteTimeGetCurrent() - phaseStartedAt) * 1000)
+            activeSpaceIDs = resolved
+            return resolved
+        }
+
+        let axCountInManagedSpaces = axWindowIDs.filter { windowID in
+            cgsWindowIDs.contains(windowID)
+        }.count
+        var count = axCountInManagedSpaces
+        if let stopAt, count >= stopAt {
+            return stopAt
+        }
+
+        phaseStartedAt = CFAbsoluteTimeGetCurrent()
+        for windowID in cgsWindowIDs.subtracting(axWindowIDs) {
+            guard shouldIncludeCGSCrossSpaceWindow(windowID: windowID,
+                                                   entry: entriesByWindowID[windowID],
+                                                   targetPIDs: targetPIDs,
+                                                   activeSpaceIDs: resolvedActiveSpaceIDs) else {
+                continue
+            }
+            count += 1
+            if let stopAt, count >= stopAt {
+                phases.cgsFilterMs = Int((CFAbsoluteTimeGetCurrent() - phaseStartedAt) * 1000)
+                return stopAt
+            }
+        }
+
+        phases.cgsFilterMs = Int((CFAbsoluteTimeGetCurrent() - phaseStartedAt) * 1000)
+        return count
+    }
+
+    private static func shouldIncludeCGSCrossSpaceWindow(windowID: CGWindowID,
+                                                         entry: [String: AnyObject]?,
+                                                         targetPIDs: Set<pid_t>,
+                                                         activeSpaceIDs: () -> Set<Int>) -> Bool {
+        guard let ownerPID = WindowSpacePrivateApis.ownerPID(for: windowID),
+              targetPIDs.contains(ownerPID) else {
+            return false
+        }
+
+        if let entry {
+            let layer = (entry[kCGWindowLayer as String] as? NSNumber)?.intValue
+            guard layer == 0 else {
+                return false
+            }
+
+            let alpha = (entry[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1.0
+            guard alpha > 0.01 else {
+                return false
+            }
+
+            if let bounds = boundsFromCGEntry(entry) {
+                guard bounds.size.width >= minimumCandidateWindowSize.width,
+                      bounds.size.height >= minimumCandidateWindowSize.height else {
+                    return false
+                }
+            }
+        } else {
+            let spaceIDs = WindowSpacePrivateApis.spaces(for: windowID)
+            guard !spaceIDs.isEmpty, spaceIDs.isDisjoint(with: activeSpaceIDs()) else {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    private static func relatedProcessIDs(for app: NSRunningApplication) -> Set<pid_t> {
+        guard let bundleIdentifier = app.bundleIdentifier else {
+            return [app.processIdentifier]
+        }
+
+        return cachedWindowQueryValue(for: bundleIdentifier,
+                                      cache: &relatedProcessIDsCache,
+                                      ttl: relatedProcessIDsCacheTTL) {
+            uncachedRelatedProcessIDs(for: app)
+        }
+    }
+
+    private static func uncachedRelatedProcessIDs(for app: NSRunningApplication) -> Set<pid_t> {
+        var pids: Set<pid_t> = [app.processIdentifier]
+        guard let appBundlePath = app.bundleURL?.standardizedFileURL.path else {
+            return pids
+        }
+
+        for runningApp in NSWorkspace.shared.runningApplications {
+            guard runningApp.processIdentifier != app.processIdentifier,
+                  let bundlePath = runningApp.bundleURL?.standardizedFileURL.path else {
+                continue
+            }
+
+            if bundlePath == appBundlePath || bundlePath.hasPrefix(appBundlePath + "/") {
+                pids.insert(runningApp.processIdentifier)
+            }
+        }
+
+        return pids
+    }
+
+    private static func allCGWindowEntries() -> [[String: AnyObject]] {
+        CGWindowListCopyWindowInfo([.excludeDesktopElements], kCGNullWindowID) as? [[String: AnyObject]] ?? []
+    }
+
+    private static func cgWindowEntries(for pids: Set<pid_t>) -> [[String: AnyObject]] {
+        cgWindowEntries(for: pids, in: allCGWindowEntries())
+    }
+
+    private static func cgWindowEntries(for pids: Set<pid_t>,
+                                        in entries: [[String: AnyObject]]) -> [[String: AnyObject]] {
+        entries.filter { entry in
+            let ownerPID = (entry[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0
+            return pids.contains(ownerPID)
+        }
+    }
+
     private static func currentActiveSpaceIDs() -> Set<Int> {
-        let entries = CGWindowListCopyWindowInfo([.excludeDesktopElements], kCGNullWindowID) as? [[String: AnyObject]] ?? []
+        currentActiveSpaceIDs(from: allCGWindowEntries())
+    }
+
+    private static func currentActiveSpaceIDs(from entries: [[String: AnyObject]]) -> Set<Int> {
         var activeSpaceIDs = Set<Int>()
 
         for entry in entries {

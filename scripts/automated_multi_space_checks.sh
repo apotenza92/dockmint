@@ -51,6 +51,102 @@ capture_app_space_snapshots() {
   switch_to_control_space
 }
 
+validate_multi_space_shortcuts() {
+  local required_spaces=(
+    "$MULTI_SPACE_CONTROL_SPACE"
+    "$MULTI_SPACE_APP_SPACE_A"
+    "$MULTI_SPACE_APP_SPACE_B"
+  )
+
+  if [[ "$MULTI_SPACE_CONTROL_SPACE" == "$MULTI_SPACE_APP_SPACE_A" \
+     || "$MULTI_SPACE_CONTROL_SPACE" == "$MULTI_SPACE_APP_SPACE_B" \
+     || "$MULTI_SPACE_APP_SPACE_A" == "$MULTI_SPACE_APP_SPACE_B" ]]; then
+    echo "error: MULTI_SPACE_CONTROL_SPACE, MULTI_SPACE_APP_SPACE_A, and MULTI_SPACE_APP_SPACE_B must be distinct." >&2
+    return 1
+  fi
+
+  local space_number
+  for space_number in "${required_spaces[@]}"; do
+    if ! space_shortcut_enabled "$space_number"; then
+      echo "error: Space shortcut for Desktop $space_number is not enabled (expected Control-$space_number)." >&2
+      return 1
+    fi
+  done
+}
+
+prepare_safari_multi_space_fixture() {
+  [[ "$MULTI_SPACE_TARGET_BUNDLE" == "com.apple.Safari" ]] || return 0
+
+  validate_multi_space_shortcuts
+  set_window_tabbing_mode manual
+  open -b "com.apple.Safari" >/dev/null 2>&1 || return 1
+  wait_for_process_running_by_bundle "com.apple.Safari" 8 || return 1
+
+  osascript <<OSA >/dev/null 2>&1 || return 1
+tell application "Safari"
+  activate
+  try
+    close every window
+  end try
+end tell
+OSA
+
+  switch_to_space "$MULTI_SPACE_APP_SPACE_A"
+  osascript <<OSA >/dev/null 2>&1 || return 1
+tell application "Safari"
+  activate
+  make new document with properties {URL:"https://www.apple.com/"}
+end tell
+OSA
+  sleep 0.8
+
+  switch_to_space "$MULTI_SPACE_APP_SPACE_B"
+  osascript <<OSA >/dev/null 2>&1 || return 1
+tell application "Safari"
+  activate
+  make new document with properties {URL:"https://www.example.com/"}
+end tell
+OSA
+  sleep 0.8
+
+  switch_to_control_space
+  wait_for_safari_window_count_at_least 2 8
+}
+
+safari_window_count() {
+  osascript -e 'tell application "Safari" to count windows' 2>/dev/null || echo 0
+}
+
+wait_for_safari_window_count_at_least() {
+  local minimum_count="$1"
+  local timeout_seconds="${2:-8}"
+  local deadline=$((SECONDS + timeout_seconds))
+
+  while (( SECONDS <= deadline )); do
+    local count
+    count="$(safari_window_count)"
+    [[ "$count" =~ ^[0-9]+$ ]] || count=0
+    if (( count >= minimum_count )); then
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  return 1
+}
+
+validate_safari_multi_space_window_count() {
+  [[ "$MULTI_SPACE_TARGET_BUNDLE" == "com.apple.Safari" ]] || return 0
+
+  local windows
+  windows="$(safari_window_count)"
+  [[ "$windows" =~ ^[0-9]+$ ]] || windows=0
+  if (( windows < 2 )); then
+    echo "error: Safari must have at least 2 windows before running the multi-space suite (found $windows)" >&2
+    return 1
+  fi
+}
+
 cleanup() {
   stop_dockmint
   ensure_no_dockmint >/dev/null 2>&1 || true
@@ -71,7 +167,9 @@ PREF_BACKUP="$(artifact_path "dockmint-preferences" "plist")"
 : >"$RUN_LOG_FILE"
 : >"$LOG_FILE"
 backup_preferences "$PREF_BACKUP"
+prepare_safari_multi_space_fixture
 validate_multi_space_preconditions
+validate_safari_multi_space_window_count
 
 write_pref_string firstClickBehavior appExpose
 write_pref_bool firstClickAppExposeRequiresMultipleWindows true
@@ -81,6 +179,15 @@ write_pref_string firstClickShiftOptionAction none
 write_pref_bool firstLaunchCompleted true
 write_pref_bool showOnStartup false
 set_dock_autohide false
+
+if [[ "${MULTI_SPACE_DEMO_VISUAL_PAUSES:-0}" == "1" ]]; then
+  switch_to_space "$MULTI_SPACE_APP_SPACE_A"
+  sleep "${MULTI_SPACE_DEMO_SPACE_PAUSE_SECONDS:-2.0}"
+  switch_to_space "$MULTI_SPACE_APP_SPACE_B"
+  sleep "${MULTI_SPACE_DEMO_SPACE_PAUSE_SECONDS:-2.0}"
+  switch_to_control_space
+  sleep "${MULTI_SPACE_DEMO_CONTROL_PAUSE_SECONDS:-1.5}"
+fi
 
 start_dockmint "$LOG_FILE"
 assert_dockmint_alive "$LOG_FILE" "multi-space Dockmint process"
@@ -92,6 +199,10 @@ before_invokes="$(grep -Fc "WORKFLOW: Triggering App Exposé for $TEST_MULTI_SPA
 dock_click_with_hold "$TEST_MULTI_SPACE_TARGET_DOCK_ICON" 220
 sleep 1.0
 assert_dockmint_alive "$LOG_FILE" "after first click"
+if dock_item_menu_is_open "$TEST_MULTI_SPACE_TARGET_DOCK_ICON"; then
+  echo "  FAIL Dock context menu opened during multi-space first-click scenario"
+  exit 1
+fi
 capture_target_snapshot "after-first-click"
 capture_app_space_snapshots "after-first-click"
 after_invokes="$(grep -Fc "WORKFLOW: Triggering App Exposé for $TEST_MULTI_SPACE_TARGET_BUNDLE" "$LOG_FILE" 2>/dev/null || true)"
@@ -103,8 +214,10 @@ else
   exit 1
 fi
 
-if dock_item_menu_is_open "$TEST_MULTI_SPACE_TARGET_DOCK_ICON"; then
-  echo "  FAIL Dock context menu opened during multi-space first-click scenario"
+if grep -Eq "APP_EXPOSE_WINDOW_COUNT: .*bundle=$TEST_MULTI_SPACE_TARGET_BUNDLE .*final=([2-9]|[1-9][0-9]+)" "$LOG_FILE"; then
+  echo "  PASS App Exposé count diagnostic reported multiple target windows"
+else
+  echo "  FAIL App Exposé count diagnostic did not report multiple target windows"
   exit 1
 fi
 

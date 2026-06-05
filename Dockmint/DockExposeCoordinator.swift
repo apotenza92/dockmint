@@ -138,6 +138,7 @@ final class DockExposeCoordinator: ObservableObject {
         let followsDeferredPlainFirstClick: Bool
         let consumeClick: Bool
         let forceFirstClickActivateFallback: Bool
+        let deferredAppExposeWindowCount: Bool
     }
 
     private struct PendingFolderClickContext {
@@ -154,13 +155,26 @@ final class DockExposeCoordinator: ObservableObject {
                                            frontmostBefore: String?) -> ClickAppStateSnapshot {
         let runningApplication = NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == bundleIdentifier }
         let isRunning = runningApplication != nil
-        let totalWindowCount = isRunning ? WindowManager.totalWindowCount(bundleIdentifier: bundleIdentifier) : 0
+        let totalWindowCount = isRunning ? WindowManager.appExposeWindowCount(bundleIdentifier: bundleIdentifier) : 0
         let hasVisibleWindows = isRunning ? WindowManager.hasVisibleWindows(bundleIdentifier: bundleIdentifier) : false
         return ClickAppStateSnapshot(bundleIdentifier: bundleIdentifier,
                                      isRunning: isRunning,
                                      isFrontmost: frontmostBefore == bundleIdentifier,
                                      isActive: runningApplication?.isActive ?? false,
                                      totalWindowCount: totalWindowCount,
+                                     hasVisibleWindows: hasVisibleWindows)
+    }
+
+    private func makeOptimisticAppExposeClickAppStateSnapshot(bundleIdentifier: String,
+                                                              frontmostBefore: String?) -> ClickAppStateSnapshot {
+        let runningApplication = NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == bundleIdentifier }
+        let isRunning = runningApplication != nil
+        let hasVisibleWindows = isRunning ? WindowManager.hasVisibleWindows(bundleIdentifier: bundleIdentifier) : false
+        return ClickAppStateSnapshot(bundleIdentifier: bundleIdentifier,
+                                     isRunning: isRunning,
+                                     isFrontmost: frontmostBefore == bundleIdentifier,
+                                     isActive: runningApplication?.isActive ?? false,
+                                     totalWindowCount: isRunning ? 2 : 0,
                                      hasVisibleWindows: hasVisibleWindows)
     }
 
@@ -177,7 +191,8 @@ final class DockExposeCoordinator: ObservableObject {
                                          followsDeferredModifierFirstClick: Bool,
                                          followsDeferredPlainFirstClick: Bool,
                                          consumeClick: Bool,
-                                         forceFirstClickActivateFallback: Bool) -> PendingClickContext {
+                                         forceFirstClickActivateFallback: Bool,
+                                         deferredAppExposeWindowCount: Bool = false) -> PendingClickContext {
         let resolvedAppState = appState ?? makeClickAppStateSnapshot(bundleIdentifier: clickedBundle,
                                                                      frontmostBefore: frontmostBefore)
         return PendingClickContext(clickSequence: clickSequence,
@@ -189,12 +204,20 @@ final class DockExposeCoordinator: ObservableObject {
                                    frontmostBefore: frontmostBefore,
                                    clickedBundle: clickedBundle,
                                    appState: resolvedAppState,
-                                   windowCountAtMouseDown: resolvedAppState.totalWindowCount,
+                                   windowCountAtMouseDown: deferredAppExposeWindowCount ? nil : resolvedAppState.totalWindowCount,
                                    followsFirstClickActivation: followsFirstClickActivation,
                                    followsDeferredModifierFirstClick: followsDeferredModifierFirstClick,
                                    followsDeferredPlainFirstClick: followsDeferredPlainFirstClick,
                                    consumeClick: consumeClick,
-                                   forceFirstClickActivateFallback: forceFirstClickActivateFallback)
+                                   forceFirstClickActivateFallback: forceFirstClickActivateFallback,
+                                   deferredAppExposeWindowCount: deferredAppExposeWindowCount)
+    }
+
+    private func shouldDeferAppExposeWindowCountOnMouseDown(clickedBundle: String,
+                                                            flags: CGEventFlags) -> Bool {
+        guard preferences.firstClickBehavior == .appExpose else { return false }
+        guard modifierCombination(from: flags) == .none else { return false }
+        return NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == clickedBundle }
     }
 
     private func isRunning(bundleIdentifier: String,
@@ -224,7 +247,7 @@ final class DockExposeCoordinator: ObservableObject {
         if let appState, appState.bundleIdentifier == bundleIdentifier {
             return appState.totalWindowCount
         }
-        return WindowManager.totalWindowCount(bundleIdentifier: bundleIdentifier)
+        return WindowManager.appExposeWindowCount(bundleIdentifier: bundleIdentifier)
     }
 
     private func hasVisibleWindows(bundleIdentifier: String,
@@ -743,8 +766,16 @@ final class DockExposeCoordinator: ObservableObject {
             clickSequenceCounter += 1
             let clickSequence = clickSequenceCounter
             let frontmostBefore = FrontmostAppTracker.frontmostBundleIdentifier()
-            let appState = makeClickAppStateSnapshot(bundleIdentifier: clickedBundle,
-                                                     frontmostBefore: frontmostBefore)
+            let deferAppExposeWindowCount = shouldDeferAppExposeWindowCountOnMouseDown(clickedBundle: clickedBundle,
+                                                                                       flags: flags)
+            if deferAppExposeWindowCount {
+                WindowManager.prewarmAppExposeWindowCount(bundleIdentifier: clickedBundle)
+            }
+            let appState = deferAppExposeWindowCount
+                ? makeOptimisticAppExposeClickAppStateSnapshot(bundleIdentifier: clickedBundle,
+                                                               frontmostBefore: frontmostBefore)
+                : makeClickAppStateSnapshot(bundleIdentifier: clickedBundle,
+                                            frontmostBefore: frontmostBefore)
             let context = makePendingClickContext(clickSequence: clickSequence,
                                                   mouseDownUptime: nowUptime,
                                                   location: location,
@@ -758,7 +789,8 @@ final class DockExposeCoordinator: ObservableObject {
                                                   followsDeferredModifierFirstClick: followsDeferredModifierFirstClick,
                                                   followsDeferredPlainFirstClick: followsDeferredPlainFirstClick,
                                                   consumeClick: false,
-                                                  forceFirstClickActivateFallback: false)
+                                                  forceFirstClickActivateFallback: false,
+                                                  deferredAppExposeWindowCount: deferAppExposeWindowCount)
             let consumeClick = shouldConsumeClick(for: context)
             let forceFirstClickActivateFallback = shouldForceFirstClickActivateFallback(for: context)
             pendingClickContext = makePendingClickContext(clickSequence: context.clickSequence,
@@ -774,7 +806,8 @@ final class DockExposeCoordinator: ObservableObject {
                                                           followsDeferredModifierFirstClick: context.followsDeferredModifierFirstClick,
                                                           followsDeferredPlainFirstClick: context.followsDeferredPlainFirstClick,
                                                           consumeClick: consumeClick,
-                                                          forceFirstClickActivateFallback: forceFirstClickActivateFallback)
+                                                          forceFirstClickActivateFallback: forceFirstClickActivateFallback,
+                                                          deferredAppExposeWindowCount: context.deferredAppExposeWindowCount)
             if shouldSchedulePendingDockClickWatchdog(for: pendingClickContext!) {
                 pendingDockClickWatchdogTokenCounter += 1
                 schedulePendingDockClickWatchdog(context: pendingClickContext!,
@@ -879,7 +912,8 @@ final class DockExposeCoordinator: ObservableObject {
                                                               followsDeferredModifierFirstClick: context.followsDeferredModifierFirstClick,
                                                               followsDeferredPlainFirstClick: context.followsDeferredPlainFirstClick,
                                                               consumeClick: context.consumeClick,
-                                                              forceFirstClickActivateFallback: context.forceFirstClickActivateFallback)
+                                                              forceFirstClickActivateFallback: context.forceFirstClickActivateFallback,
+                                                              deferredAppExposeWindowCount: context.deferredAppExposeWindowCount)
             } else {
                 effectiveContext = context
             }
@@ -934,7 +968,10 @@ final class DockExposeCoordinator: ObservableObject {
     }
 
     private func shouldConsumeMouseDown(for context: PendingClickContext) -> Bool {
-        shouldFinishConsumedModifierClickEarly(for: context)
+        if context.consumeClick {
+            return true
+        }
+        return shouldFinishConsumedModifierClickEarly(for: context)
     }
 
     private func shouldScheduleConsumedFollowUpClickWatchdog(for context: PendingClickContext) -> Bool {
@@ -1039,23 +1076,23 @@ final class DockExposeCoordinator: ObservableObject {
 
     private func executeClickAction(_ context: PendingClickContext) -> Bool {
         let location = context.location
-        let buttonNumber = context.buttonNumber
         let flags = context.flags
         let frontmostBefore = context.frontmostBefore
         let clickedBundle = context.clickedBundle
         let appExposeActive = isAppExposeInteractionActive(frontmostBefore: frontmostBefore)
-        let recentFirstClickActivation = context.followsFirstClickActivation
-            || isRecentFirstClickActivatePassThrough(for: clickedBundle)
         let clickedAppIsActive = context.appState.isActive
 
         Logger.debug("WORKFLOW: click=\(context.clickSequence) clickCount=\(context.clickCount) frontmost=\(frontmostBefore ?? "nil"), clicked=\(clickedBundle), clickedIsActive=\(clickedAppIsActive), windowsDown=\(context.windowCountAtMouseDown.map(String.init) ?? "nil"), fallbackLatched=\(context.forceFirstClickActivateFallback), lastTriggered=\(lastTriggeredBundle ?? "nil"), currentExpose=\(currentExposeApp ?? "nil")")
+
+        let executionAppState: ClickAppStateSnapshot? = context.deferredAppExposeWindowCount ? nil : context.appState
+        let executionWindowCountHint = context.deferredAppExposeWindowCount ? nil : context.windowCountAtMouseDown
 
         if let promotedAction = rapidSecondClickPromotionAction(bundleIdentifier: clickedBundle,
                                                                 clickCount: context.clickCount,
                                                                 flags: flags,
                                                                 frontmostBefore: frontmostBefore,
-                                                                appState: context.appState,
-                                                                windowCountHint: context.windowCountAtMouseDown) {
+                                                                appState: executionAppState,
+                                                                windowCountHint: executionWindowCountHint) {
             Logger.debug("WORKFLOW: promoting rapid second click to double-click action \(promotedAction.rawValue) for \(clickedBundle)")
             recordActionExecution(action: promotedAction,
                                   bundle: clickedBundle,
@@ -1127,9 +1164,10 @@ final class DockExposeCoordinator: ObservableObject {
                                                at: location,
                                                flags: flags,
                                                frontmostBefore: frontmostBefore,
-                                               appState: context.appState,
-                                               windowCountHint: context.windowCountAtMouseDown,
-                                               forceActivateFallback: context.forceFirstClickActivateFallback)
+                                               appState: executionAppState,
+                                               windowCountHint: executionWindowCountHint,
+                                               forceActivateFallback: context.forceFirstClickActivateFallback,
+                                               preferPrewarmedAppExposeCount: context.deferredAppExposeWindowCount)
             }
 
             if appsWithoutWindowsInExpose.contains(clickedBundle) {
@@ -1185,9 +1223,10 @@ final class DockExposeCoordinator: ObservableObject {
                                                at: location,
                                                flags: flags,
                                                frontmostBefore: frontmostBefore,
-                                               appState: context.appState,
-                                               windowCountHint: context.windowCountAtMouseDown,
-                                               forceActivateFallback: context.forceFirstClickActivateFallback)
+                                               appState: executionAppState,
+                                               windowCountHint: executionWindowCountHint,
+                                               forceActivateFallback: context.forceFirstClickActivateFallback,
+                                               preferPrewarmedAppExposeCount: context.deferredAppExposeWindowCount)
             }
         }
 
@@ -1203,9 +1242,10 @@ final class DockExposeCoordinator: ObservableObject {
                                            at: location,
                                            flags: flags,
                                            frontmostBefore: frontmostBefore,
-                                           appState: context.appState,
-                                           windowCountHint: context.windowCountAtMouseDown,
-                                           forceActivateFallback: context.forceFirstClickActivateFallback)
+                                           appState: executionAppState,
+                                           windowCountHint: executionWindowCountHint,
+                                           forceActivateFallback: context.forceFirstClickActivateFallback,
+                                           preferPrewarmedAppExposeCount: context.deferredAppExposeWindowCount)
         }
 
         if let lastBundle = lastTriggeredBundle, lastBundle == clickedBundle {
@@ -1235,9 +1275,10 @@ final class DockExposeCoordinator: ObservableObject {
                                            at: location,
                                            flags: flags,
                                            frontmostBefore: frontmostBefore,
-                                           appState: context.appState,
-                                           windowCountHint: context.windowCountAtMouseDown,
-                                           forceActivateFallback: context.forceFirstClickActivateFallback)
+                                           appState: executionAppState,
+                                           windowCountHint: executionWindowCountHint,
+                                           forceActivateFallback: context.forceFirstClickActivateFallback,
+                                           preferPrewarmedAppExposeCount: context.deferredAppExposeWindowCount)
         }
 
         Logger.debug("WORKFLOW: Using single-click app action path for \(clickedBundle) clickCount=\(context.clickCount)")
@@ -1245,9 +1286,10 @@ final class DockExposeCoordinator: ObservableObject {
                                        at: location,
                                        flags: flags,
                                        frontmostBefore: frontmostBefore,
-                                       appState: context.appState,
-                                       windowCountHint: context.windowCountAtMouseDown,
-                                       forceActivateFallback: context.forceFirstClickActivateFallback)
+                                       appState: executionAppState,
+                                       windowCountHint: executionWindowCountHint,
+                                       forceActivateFallback: context.forceFirstClickActivateFallback,
+                                       preferPrewarmedAppExposeCount: context.deferredAppExposeWindowCount)
     }
 
     private func recordActionExecution(action: DockAction, bundle: String, source: String) {
@@ -1377,7 +1419,9 @@ final class DockExposeCoordinator: ObservableObject {
             let scrollSlot = appExposeSlotKey(for: source, modifier: scrollModifier)
             let scrollRequiresMultiple = preferences.appExposeMultipleWindowsRequired(slot: scrollSlot)
             if scrollRequiresMultiple {
-                let windowCountNow = WindowManager.totalWindowCount(bundleIdentifier: clickedBundle)
+                let diagnostics = WindowManager.appExposeWindowCountDiagnostics(bundleIdentifier: clickedBundle)
+                let windowCountNow = diagnostics.finalCount
+                Logger.debug("APP_EXPOSE_DECISION: scroll appExpose count \(diagnostics.summary)")
                 if windowCountNow < 2 {
                     Logger.debug("APP_EXPOSE_DECISION: scroll appExpose skipped for \(clickedBundle): fewer than two windows")
                     return false
@@ -1602,7 +1646,8 @@ final class DockExposeCoordinator: ObservableObject {
                                            appState: ClickAppStateSnapshot? = nil,
                                            windowCountHint: Int? = nil,
                                            forceActivateFallback: Bool = false,
-                                           allowDeferredPlainAppExpose: Bool = true) -> Bool {
+                                           allowDeferredPlainAppExpose: Bool = true,
+                                           preferPrewarmedAppExposeCount: Bool = false) -> Bool {
         switch preferences.firstClickBehavior {
         case .activateApp:
             Logger.debug("WORKFLOW: First click behavior=activateApp; allowing Dock activation")
@@ -1638,25 +1683,28 @@ final class DockExposeCoordinator: ObservableObject {
             let windowCountNow = totalWindowCount(bundleIdentifier: bundleIdentifier,
                                                   appState: appState,
                                                   windowCountHint: windowCountHint)
-            Logger.debug("APP_EXPOSE_DECISION: firstClick appExpose bundle=\(bundleIdentifier) forceFallback=\(forceActivateFallback) windowsNow=\(windowCountNow)")
+            let diagnostics = appExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier,
+                                                              preferPrewarmed: preferPrewarmedAppExposeCount)
+            Logger.log("APP_EXPOSE_DECISION: firstClick appExpose bundle=\(bundleIdentifier) forceFallback=\(forceActivateFallback) windowsNow=\(windowCountNow) diagnostics=\(diagnostics.summary)")
             if forceActivateFallback {
-                Logger.debug("APP_EXPOSE_DECISION: firstClick forced fallback for \(bundleIdentifier); allowing Dock activation")
+                Logger.log("APP_EXPOSE_DECISION: firstClick forced fallback for \(bundleIdentifier); allowing Dock activation")
                 scheduleDockActivationAssertionIfNeeded(for: bundleIdentifier,
                                                         frontmostBefore: frontmostBefore,
                                                         reason: "forcedFallback")
                 return false
             }
             if windowCountNow == 0 {
-                Logger.debug("APP_EXPOSE_DECISION: firstClick no-window fallback for \(bundleIdentifier); allowing Dock activation")
+                Logger.log("APP_EXPOSE_DECISION: firstClick no-window fallback for \(bundleIdentifier); allowing Dock activation")
                 scheduleDockActivationAssertionIfNeeded(for: bundleIdentifier,
                                                         frontmostBefore: frontmostBefore,
                                                         reason: "noWindows")
                 return false
             }
             guard shouldRunFirstClickAppExpose(for: bundleIdentifier,
-                                               appState: appState,
-                                               windowCountHint: windowCountNow) else {
-                Logger.debug("APP_EXPOSE_DECISION: firstClick appExpose skipped by shouldRunFirstClickAppExpose for \(bundleIdentifier)")
+                                               appState: nil,
+                                               windowCountHint: nil,
+                                               preferPrewarmed: preferPrewarmedAppExposeCount) else {
+                Logger.log("APP_EXPOSE_DECISION: firstClick appExpose skipped by multiple-window gate for \(bundleIdentifier)")
                 scheduleDockActivationAssertionIfNeeded(for: bundleIdentifier,
                                                         frontmostBefore: frontmostBefore,
                                                         reason: "multipleWindowsGate")
@@ -1673,14 +1721,14 @@ final class DockExposeCoordinator: ObservableObject {
                 scheduleDeferredAppExposeTrigger(for: bundleIdentifier,
                                                  source: "activeSingleClick",
                                                  delay: 0)
-                return false
+                return true
             }
 
             Logger.debug("APP_EXPOSE_DECISION: firstClick appExpose executing for \(bundleIdentifier)")
             scheduleDeferredAppExposeTrigger(for: bundleIdentifier,
                                              source: "firstClick",
                                              delay: 0)
-            return false
+            return true
         }
     }
 
@@ -1690,7 +1738,8 @@ final class DockExposeCoordinator: ObservableObject {
                                          frontmostBefore: String?,
                                          appState: ClickAppStateSnapshot? = nil,
                                          windowCountHint: Int? = nil,
-                                         forceActivateFallback: Bool = false) -> Bool {
+                                         forceActivateFallback: Bool = false,
+                                         preferPrewarmedAppExposeCount: Bool = false) -> Bool {
         let modifier = modifierCombination(from: flags)
 
         if modifier == .none {
@@ -1699,7 +1748,8 @@ final class DockExposeCoordinator: ObservableObject {
                                              frontmostBefore: frontmostBefore,
                                              appState: appState,
                                              windowCountHint: windowCountHint,
-                                             forceActivateFallback: forceActivateFallback)
+                                             forceActivateFallback: forceActivateFallback,
+                                             preferPrewarmedAppExposeCount: preferPrewarmedAppExposeCount)
         }
 
         let isRunning = isRunning(bundleIdentifier: bundleIdentifier,
@@ -2017,7 +2067,8 @@ final class DockExposeCoordinator: ObservableObject {
         if currentFrontmost != bundleIdentifier {
             _ = WindowManager.activateAndShowMainWindow(bundleIdentifier: bundleIdentifier)
         }
-        WindowManager.invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier)
+        WindowManager.invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier,
+                                                includeRelatedProcessIDs: false)
 
         let receipt = invoker.invokeApplicationWindows(for: bundleIdentifier, requireEvidence: true) { [weak self] result in
             guard let self else { return }
@@ -2027,7 +2078,8 @@ final class DockExposeCoordinator: ObservableObject {
             }
 
             self.appExposeInvocationToken = nil
-            WindowManager.invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier)
+            WindowManager.invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier,
+                                                    includeRelatedProcessIDs: false)
             Logger.debug("WORKFLOW: App Exposé invoke result target=\(bundleIdentifier) dispatched=\(result.dispatched) evidence=\(result.evidence) confirmed=\(result.confirmed) strategy=\(result.strategy?.rawValue ?? "none") frontmostAfter=\(result.frontmostAfter)")
 
             if DockDecisionEngine.shouldCommitAppExposeTracking(invocationConfirmed: result.confirmed) {
@@ -2115,6 +2167,10 @@ final class DockExposeCoordinator: ObservableObject {
             return false
         }
 
+        if context.deferredAppExposeWindowCount {
+            return true
+        }
+
         return shouldConsumeFirstClickAction(for: clickedBundle,
                                              flags: context.flags,
                                              appState: context.appState,
@@ -2139,6 +2195,10 @@ final class DockExposeCoordinator: ObservableObject {
             Logger.debug("APP_EXPOSE_DECISION: click=\(context.clickSequence) fallbackLatch=false reason=notRunning")
             return false
         }
+        if context.deferredAppExposeWindowCount {
+            Logger.debug("APP_EXPOSE_DECISION: click=\(context.clickSequence) fallbackLatch=false reason=deferredWindowCount")
+            return false
+        }
         let windows = totalWindowCount(bundleIdentifier: context.clickedBundle,
                                        appState: context.appState,
                                        windowCountHint: context.windowCountAtMouseDown)
@@ -2148,7 +2208,7 @@ final class DockExposeCoordinator: ObservableObject {
     }
 
     private func isAppExposeInteractionActive(frontmostBefore: String?) -> Bool {
-        DockDecisionEngine.isAppExposeInteractionActive(
+        return DockDecisionEngine.isAppExposeInteractionActive(
             hasInvocationToken: appExposeInvocationToken != nil,
             frontmostBefore: frontmostBefore,
             hasTrackingState: lastTriggeredBundle != nil || currentExposeApp != nil,
@@ -2186,9 +2246,13 @@ final class DockExposeCoordinator: ObservableObject {
             let windowCount = totalWindowCount(bundleIdentifier: bundleIdentifier,
                                                appState: appState,
                                                windowCountHint: windowCountHint)
-            if frontmostBefore == bundleIdentifier,
-               preferences.firstClickBehavior == .appExpose {
-                return false
+            if preferences.firstClickBehavior == .appExpose,
+               isRunning,
+               windowCount > 0,
+               shouldRunFirstClickAppExpose(for: bundleIdentifier,
+                                            appState: appState,
+                                            windowCountHint: windowCount) {
+                return true
             }
             return DockDecisionEngine.shouldConsumeFirstClickPlainAction(
                 firstClickBehavior: decisionBehavior(from: preferences.firstClickBehavior),
@@ -2225,11 +2289,13 @@ final class DockExposeCoordinator: ObservableObject {
 
     private func shouldRunFirstClickAppExpose(for bundleIdentifier: String,
                                               appState: ClickAppStateSnapshot? = nil,
-                                              windowCountHint: Int? = nil) -> Bool {
+                                              windowCountHint: Int? = nil,
+                                              preferPrewarmed: Bool = false) -> Bool {
         shouldRunAppExpose(for: bundleIdentifier,
                            appState: appState,
                            windowCountHint: windowCountHint,
-                           requiresMultipleWindows: preferences.firstClickAppExposeRequiresMultipleWindows)
+                           requiresMultipleWindows: preferences.firstClickAppExposeRequiresMultipleWindows,
+                           preferPrewarmed: preferPrewarmed)
     }
 
     private func shouldSuppressImmediateNoWindowAppExposeClick(for bundleIdentifier: String) -> Bool {
@@ -2385,31 +2451,44 @@ final class DockExposeCoordinator: ObservableObject {
     private func shouldRunAppExpose(for bundleIdentifier: String,
                                     appState: ClickAppStateSnapshot? = nil,
                                     windowCountHint: Int? = nil,
-                                    requiresMultipleWindows: Bool) -> Bool {
-        let windowCount = totalWindowCount(bundleIdentifier: bundleIdentifier,
-                                           appState: appState,
-                                           windowCountHint: windowCountHint)
+                                    requiresMultipleWindows: Bool,
+                                    preferPrewarmed: Bool = false) -> Bool {
+        let fetchStartedAt = CFAbsoluteTimeGetCurrent()
+        let diagnostics = appExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier,
+                                                          preferPrewarmed: preferPrewarmed)
+        let decisionFetchMs = Int((CFAbsoluteTimeGetCurrent() - fetchStartedAt) * 1000)
+        let windowCount = diagnostics.finalCount
+        Logger.log("APP_EXPOSE_DECISION: shouldRun appExpose count \(diagnostics.summary) decisionFetchMs=\(decisionFetchMs) requiresMultiple=\(requiresMultipleWindows)")
         let shouldRun = DockDecisionEngine.shouldRunFirstClickAppExpose(
             windowCount: windowCount,
             requiresMultipleWindows: requiresMultipleWindows
         )
         if !shouldRun {
             if windowCount == 0 {
-                Logger.debug("WORKFLOW: appExpose skipped for \(bundleIdentifier): no windows")
+                Logger.log("WORKFLOW: appExpose skipped for \(bundleIdentifier): no windows")
             } else if requiresMultipleWindows && windowCount < 2 {
-                Logger.debug("WORKFLOW: appExpose skipped for \(bundleIdentifier): fewer than two windows")
+                Logger.log("WORKFLOW: appExpose skipped for \(bundleIdentifier): fewer than two windows")
             }
         }
         return shouldRun
+    }
+
+    private func appExposeWindowCountDiagnostics(bundleIdentifier: String,
+                                                 preferPrewarmed: Bool) -> WindowManager.AppExposeWindowCountDiagnostics {
+        if preferPrewarmed {
+            return WindowManager.appExposeWindowCountDiagnosticsAfterPrewarmIfAvailable(bundleIdentifier: bundleIdentifier)
+        }
+        return WindowManager.appExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier)
     }
 
     private func shouldConsumeActiveClickAppExpose(for bundleIdentifier: String,
                                                    flags: CGEventFlags,
                                                    appState: ClickAppStateSnapshot? = nil,
                                                    frontmostBefore: String?) -> Bool {
-        let windowCount = totalWindowCount(bundleIdentifier: bundleIdentifier,
-                                           appState: appState)
+        let diagnostics = WindowManager.appExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier)
+        let windowCount = diagnostics.finalCount
         guard windowCount > 0 else { return false }
+        Logger.log("APP_EXPOSE_DECISION: activeClick appExpose count \(diagnostics.summary)")
 
         let clickModifier = modifierCombination(from: flags)
         let clickSlot = appExposeSlotKey(for: .click, modifier: clickModifier)
@@ -2675,7 +2754,8 @@ final class DockExposeCoordinator: ObservableObject {
     private func triggerAppExpose(for bundleIdentifier: String,
                                   deferredContext: DeferredAppExposeContext? = nil) {
         Logger.debug("WORKFLOW: Triggering App Exposé for \(bundleIdentifier)")
-        WindowManager.invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier)
+        WindowManager.invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier,
+                                                includeRelatedProcessIDs: false)
 
         let invocationToken = UUID()
         appExposeInvocationToken = invocationToken

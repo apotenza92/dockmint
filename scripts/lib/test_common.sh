@@ -16,9 +16,9 @@ if [[ -z "${DOCKMINT_PERSISTENT_LOG_ROOT:-}" ]]; then
       ;;
   esac
 fi
-: "${MULTI_SPACE_TARGET_DOCK_ICON:=Brave Browser}"
-: "${MULTI_SPACE_TARGET_PROCESS:=Brave Browser}"
-: "${MULTI_SPACE_TARGET_BUNDLE:=com.brave.Browser}"
+: "${MULTI_SPACE_TARGET_DOCK_ICON:=Safari}"
+: "${MULTI_SPACE_TARGET_PROCESS:=Safari}"
+: "${MULTI_SPACE_TARGET_BUNDLE:=com.apple.Safari}"
 : "${MULTI_SPACE_CONTROL_SPACE:=1}"
 : "${MULTI_SPACE_APP_SPACE_A:=2}"
 : "${MULTI_SPACE_APP_SPACE_B:=3}"
@@ -620,7 +620,20 @@ process_bundle_id() {
 
 process_window_count() {
   local process_name="$1"
-  osascript -e "tell application \"System Events\" to tell process \"$process_name\" to get count of windows" 2>/dev/null || echo 0
+  local count
+  count="$(osascript -e "tell application \"System Events\" to tell process \"$process_name\" to get count of windows" 2>/dev/null || echo 0)"
+  [[ "$count" =~ ^[0-9]+$ ]] || count=0
+
+  if (( count == 0 )) && [[ "$process_name" == "Safari" ]]; then
+    local safari_count
+    safari_count="$(osascript -e 'tell application "Safari" to count windows' 2>/dev/null || echo 0)"
+    [[ "$safari_count" =~ ^[0-9]+$ ]] || safari_count=0
+    if (( safari_count > count )); then
+      count="$safari_count"
+    fi
+  fi
+
+  printf '%s\n' "$count"
 }
 
 wait_for_process_window_count_exact() {

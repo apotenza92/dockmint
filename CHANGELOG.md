@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.4.0]
+
+- Made App Exposé window counting cross-Space aware, so the `requires multiple windows` gate can detect windows spread across Mission Control Spaces while preserving current-Space-only behaviour for minimise, restore, and bring-to-front actions.
+- Improved App Exposé click responsiveness with mouse-down prewarming, short-lived diagnostics caching, reusable CG window snapshots, lazy Space lookups, and cached related-process discovery.
+- Added App Exposé timing diagnostics and an automated timing benchmark for comparing cache and prewarm settings across real Dock click scenarios.
+
 ## [v0.3.3]
 
 - Added a `Reverse mouse scroll direction` setting for mouse-wheel scroll actions, with first-run and Settings suggestions for users of tools like LinearMouse, Mos, and UnnaturalScrollWheels while leaving trackpad gestures unchanged.
