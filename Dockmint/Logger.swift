@@ -1,8 +1,8 @@
 import Foundation
 import os
 
-/// Lightweight logger that always writes to unified logging and only writes persistent
-/// per-run files when the user has explicitly opted in or a local debug override is enabled.
+/// Lightweight logger that writes operational events to unified logging, and only writes
+/// diagnostic/debug output when the user opts in or a local debug override is enabled.
 /// Persistent logs are separated by app identity so development and release runs do not share folders.
 enum Logger {
     private static let persistentFileLoggingPreferenceKey = "persistentDiagnosticFileLoggingEnabled"
@@ -47,7 +47,7 @@ enum Logger {
     }
 
     static func debug(_ message: String) {
-        guard debugOverrideEnabled else { return }
+        guard shouldWritePersistentFileLogs else { return }
         let line = "Dockmint: \(message)"
         oslog.debug("\(line, privacy: .public)")
         queue.async {

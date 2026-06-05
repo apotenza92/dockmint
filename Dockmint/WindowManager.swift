@@ -312,12 +312,12 @@ enum WindowManager {
         // First try the direct NSRunningApplication hide.
         let hideRequested = app.hide()
         if hideRequested, waitForHidden(app, timeout: 0.35) {
-            Logger.log("WindowManager: hide() succeeded for \(bundleIdentifier)")
+            Logger.debug("WindowManager: hide() succeeded for \(bundleIdentifier)")
             return true
         }
 
         if app.isHidden {
-            Logger.log("WindowManager: App \(bundleIdentifier) already hidden; treating as success")
+            Logger.debug("WindowManager: App \(bundleIdentifier) already hidden; treating as success")
             return true
         }
 
@@ -326,7 +326,7 @@ enum WindowManager {
         let hidden: CFBoolean = kCFBooleanTrue
         if AXUIElementSetAttributeValue(appElement, kAXHiddenAttribute as CFString, hidden) == .success,
            waitForHidden(app, timeout: 0.35) {
-            Logger.log("WindowManager: AX hide succeeded for \(bundleIdentifier)")
+            Logger.debug("WindowManager: AX hide succeeded for \(bundleIdentifier)")
             return true
         }
 
@@ -343,14 +343,14 @@ enum WindowManager {
             for fallback in cmdHFallbacks {
                 guard fallback.send() else { continue }
                 if waitForHidden(app, timeout: 0.35) {
-                    Logger.log("WindowManager: \(fallback.label) fallback succeeded for \(bundleIdentifier)")
+                    Logger.debug("WindowManager: \(fallback.label) fallback succeeded for \(bundleIdentifier)")
                     return true
                 }
             }
         }
 
         if pressHideMenuItem(for: app), waitForHidden(app, timeout: 0.35) {
-            Logger.log("WindowManager: AX menu hide fallback succeeded for \(bundleIdentifier)")
+            Logger.debug("WindowManager: AX menu hide fallback succeeded for \(bundleIdentifier)")
             return true
         }
 
@@ -367,7 +367,7 @@ enum WindowManager {
         defer { invalidateWindowQueryCache(bundleIdentifier: bundleIdentifier) }
         app.unhide()
         _ = activate(app)
-        Logger.log("WindowManager: Unhid and activated \(bundleIdentifier)")
+        Logger.debug("WindowManager: Unhid and activated \(bundleIdentifier)")
         return true
     }
     
@@ -389,7 +389,7 @@ enum WindowManager {
         }
         let windowsArray = currentSpaceStandardWindows(for: app)
         guard !windowsArray.isEmpty else {
-            Logger.log("WindowManager: No current-space standard windows to minimize for \(bundleIdentifier)")
+            Logger.debug("WindowManager: No current-space standard windows to minimize for \(bundleIdentifier)")
             return false
         }
         
@@ -404,7 +404,7 @@ enum WindowManager {
             }
         }
         
-        Logger.log("WindowManager: Minimized \(minimizedCount) current-space standard windows for \(bundleIdentifier)")
+        Logger.debug("WindowManager: Minimized \(minimizedCount) current-space standard windows for \(bundleIdentifier)")
         return minimizedCount > 0
         
     }
@@ -419,7 +419,7 @@ enum WindowManager {
         
         let windowsArray = currentSpaceStandardWindows(for: app)
         guard !windowsArray.isEmpty else {
-            Logger.log("WindowManager: No current-space standard windows to restore for \(bundleIdentifier)")
+            Logger.debug("WindowManager: No current-space standard windows to restore for \(bundleIdentifier)")
             return false
         }
         
@@ -430,7 +430,7 @@ enum WindowManager {
             }
         }
         
-        Logger.log("WindowManager: Restored \(restoredCount) current-space standard windows for \(bundleIdentifier)")
+        Logger.debug("WindowManager: Restored \(restoredCount) current-space standard windows for \(bundleIdentifier)")
         
         guard restoredCount > 0 else { return false }
         
@@ -627,7 +627,7 @@ enum WindowManager {
             }
         }
         
-        Logger.log("WindowManager: Activated app \(bundleIdentifier) and showing main window")
+        Logger.debug("WindowManager: Activated app \(bundleIdentifier) and showing main window")
         return true
     }
     
@@ -641,14 +641,14 @@ enum WindowManager {
 
         let terminateRequested = app.terminate()
         if waitForTermination(app, timeout: 0.8) {
-            Logger.log("WindowManager: App \(bundleIdentifier) terminated gracefully")
+            Logger.debug("WindowManager: App \(bundleIdentifier) terminated gracefully")
             return true
         }
 
         Logger.log("WindowManager: terminate() did not finish for \(bundleIdentifier), requested=\(terminateRequested). Attempting forceTerminate.")
         _ = app.forceTerminate()
         if waitForTermination(app, timeout: 0.8) {
-            Logger.log("WindowManager: App \(bundleIdentifier) force-terminated")
+            Logger.debug("WindowManager: App \(bundleIdentifier) force-terminated")
             return true
         }
 
@@ -666,7 +666,7 @@ enum WindowManager {
         
         let windows = currentSpaceStandardWindows(for: app)
         guard !windows.isEmpty else {
-            Logger.log("WindowManager: No current-space standard windows to bring front for \(bundleIdentifier)")
+            Logger.debug("WindowManager: No current-space standard windows to bring front for \(bundleIdentifier)")
             return false
         }
 
@@ -686,7 +686,7 @@ enum WindowManager {
         
         _ = activate(app)
         
-        Logger.log("WindowManager: Raised \(raisedCount) current-space standard windows for \(bundleIdentifier) (restored=\(restoredCount))")
+        Logger.debug("WindowManager: Raised \(raisedCount) current-space standard windows for \(bundleIdentifier) (restored=\(restoredCount))")
         return raisedCount > 0 || restoredCount > 0
     }
     
@@ -726,7 +726,7 @@ enum WindowManager {
             }
         }
 
-        Logger.log("WindowManager: Hide others invoked for \(bundleIdentifier); hidden=\(hiddenCount)")
+        Logger.debug("WindowManager: Hide others invoked for \(bundleIdentifier); hidden=\(hiddenCount)")
         return true
     }
     
@@ -743,11 +743,11 @@ enum WindowManager {
         }
         
         if changed {
-            Logger.log("WindowManager: Show All - unhid applications")
+            Logger.debug("WindowManager: Show All - unhid applications")
             return true
         }
 
-        Logger.log("WindowManager: Show All - no hidden apps found")
+        Logger.debug("WindowManager: Show All - no hidden apps found")
         return true
     }
     

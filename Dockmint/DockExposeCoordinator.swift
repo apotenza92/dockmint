@@ -1344,7 +1344,7 @@ final class DockExposeCoordinator: ObservableObject {
         lastScrollBundle = targetKey
         lastScrollDirection = direction
 
-        Logger.log("WORKFLOW: Executing folder scroll \(direction == .up ? "up" : "down") action: \(action.debugName) for \(folderURL.path) (modifiers=\(modifierCombination(from: flags).rawValue), flags=\(flags.rawValue))")
+        Logger.debug("WORKFLOW: Executing folder scroll \(direction == .up ? "up" : "down") action: \(action.debugName) for \(folderURL.path) (modifiers=\(modifierCombination(from: flags).rawValue), flags=\(flags.rawValue))")
         return DockFolderActionExecutor.perform(action, folderURL: folderURL)
     }
 
@@ -1386,7 +1386,7 @@ final class DockExposeCoordinator: ObservableObject {
         lastActionExecutedBundle = clickedBundle
         lastActionExecutedSource = source.rawValue
         lastActionExecutedAt = Date()
-        Logger.log("WORKFLOW: Executing scroll \(direction == .up ? "up" : "down") action: \(action.rawValue) for \(clickedBundle) (modifiers=\(modifierCombination(from: flags).rawValue), flags=\(flags.rawValue))")
+        Logger.debug("WORKFLOW: Executing scroll \(direction == .up ? "up" : "down") action: \(action.rawValue) for \(clickedBundle) (modifiers=\(modifierCombination(from: flags).rawValue), flags=\(flags.rawValue))")
 
         switch action {
         case .none:
@@ -1598,7 +1598,7 @@ final class DockExposeCoordinator: ObservableObject {
             return false
         }
 
-        Logger.log("WORKFLOW: Executing folder click action: \(action.debugName) for \(context.folderURL.path) (modifiers=\(modifierCombination(from: context.flags).rawValue), flags=\(context.flags.rawValue))")
+        Logger.debug("WORKFLOW: Executing folder click action: \(action.debugName) for \(context.folderURL.path) (modifiers=\(modifierCombination(from: context.flags).rawValue), flags=\(context.flags.rawValue))")
         let succeeded = DockFolderActionExecutor.perform(action, folderURL: context.folderURL)
         Logger.debug("WORKFLOW: Folder executor result path=\(context.folderURL.path) success=\(succeeded) route=\(String(describing: DockFolderActionExecutor.executionRoute(for: action)))")
         return succeeded
@@ -1685,9 +1685,9 @@ final class DockExposeCoordinator: ObservableObject {
                                                   windowCountHint: windowCountHint)
             let diagnostics = appExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier,
                                                               preferPrewarmed: preferPrewarmedAppExposeCount)
-            Logger.log("APP_EXPOSE_DECISION: firstClick appExpose bundle=\(bundleIdentifier) forceFallback=\(forceActivateFallback) windowsNow=\(windowCountNow) diagnostics=\(diagnostics.summary)")
+            Logger.debug("APP_EXPOSE_DECISION: firstClick appExpose bundle=\(bundleIdentifier) forceFallback=\(forceActivateFallback) windowsNow=\(windowCountNow) diagnostics=\(diagnostics.summary)")
             if forceActivateFallback {
-                Logger.log("APP_EXPOSE_DECISION: firstClick forced fallback for \(bundleIdentifier); allowing Dock activation")
+                Logger.debug("APP_EXPOSE_DECISION: firstClick forced fallback for \(bundleIdentifier); allowing Dock activation")
                 if preferPrewarmedAppExposeCount {
                     return performConsumedAppExposeFallbackActivation(bundleIdentifier: bundleIdentifier,
                                                                       windowCount: windowCountNow,
@@ -1699,7 +1699,7 @@ final class DockExposeCoordinator: ObservableObject {
                 return false
             }
             if windowCountNow == 0 {
-                Logger.log("APP_EXPOSE_DECISION: firstClick no-window fallback for \(bundleIdentifier); allowing Dock activation")
+                Logger.debug("APP_EXPOSE_DECISION: firstClick no-window fallback for \(bundleIdentifier); allowing Dock activation")
                 if preferPrewarmedAppExposeCount {
                     return performConsumedAppExposeFallbackActivation(bundleIdentifier: bundleIdentifier,
                                                                       windowCount: windowCountNow,
@@ -1714,7 +1714,7 @@ final class DockExposeCoordinator: ObservableObject {
                                                appState: nil,
                                                windowCountHint: nil,
                                                preferPrewarmed: preferPrewarmedAppExposeCount) else {
-                Logger.log("APP_EXPOSE_DECISION: firstClick appExpose skipped by multiple-window gate for \(bundleIdentifier)")
+                Logger.debug("APP_EXPOSE_DECISION: firstClick appExpose skipped by multiple-window gate for \(bundleIdentifier)")
                 if preferPrewarmedAppExposeCount {
                     return performConsumedAppExposeFallbackActivation(bundleIdentifier: bundleIdentifier,
                                                                       windowCount: windowCountNow,
@@ -1821,7 +1821,7 @@ final class DockExposeCoordinator: ObservableObject {
         lastActionExecutedBundle = bundleIdentifier
         lastActionExecutedSource = source
         lastActionExecutedAt = Date()
-        Logger.log("WORKFLOW: Executing first-click modifier action: \(action.rawValue) for \(bundleIdentifier) (modifier=\(modifierCombination(from: flags).rawValue), flags=\(flags.rawValue), source=\(source))")
+        Logger.debug("WORKFLOW: Executing first-click modifier action: \(action.rawValue) for \(bundleIdentifier) (modifier=\(modifierCombination(from: flags).rawValue), flags=\(flags.rawValue), source=\(source))")
 
         switch action {
         case .none:
@@ -2473,16 +2473,16 @@ final class DockExposeCoordinator: ObservableObject {
                                                           preferPrewarmed: preferPrewarmed)
         let decisionFetchMs = Int((CFAbsoluteTimeGetCurrent() - fetchStartedAt) * 1000)
         let windowCount = diagnostics.finalCount
-        Logger.log("APP_EXPOSE_DECISION: shouldRun appExpose count \(diagnostics.summary) decisionFetchMs=\(decisionFetchMs) requiresMultiple=\(requiresMultipleWindows)")
+        Logger.debug("APP_EXPOSE_DECISION: shouldRun appExpose count \(diagnostics.summary) decisionFetchMs=\(decisionFetchMs) requiresMultiple=\(requiresMultipleWindows)")
         let shouldRun = DockDecisionEngine.shouldRunFirstClickAppExpose(
             windowCount: windowCount,
             requiresMultipleWindows: requiresMultipleWindows
         )
         if !shouldRun {
             if windowCount == 0 {
-                Logger.log("WORKFLOW: appExpose skipped for \(bundleIdentifier): no windows")
+                Logger.debug("WORKFLOW: appExpose skipped for \(bundleIdentifier): no windows")
             } else if requiresMultipleWindows && windowCount < 2 {
-                Logger.log("WORKFLOW: appExpose skipped for \(bundleIdentifier): fewer than two windows")
+                Logger.debug("WORKFLOW: appExpose skipped for \(bundleIdentifier): fewer than two windows")
             }
         }
         return shouldRun
@@ -2503,7 +2503,7 @@ final class DockExposeCoordinator: ObservableObject {
         let diagnostics = WindowManager.appExposeWindowCountDiagnostics(bundleIdentifier: bundleIdentifier)
         let windowCount = diagnostics.finalCount
         guard windowCount > 0 else { return false }
-        Logger.log("APP_EXPOSE_DECISION: activeClick appExpose count \(diagnostics.summary)")
+        Logger.debug("APP_EXPOSE_DECISION: activeClick appExpose count \(diagnostics.summary)")
 
         let clickModifier = modifierCombination(from: flags)
         let clickSlot = appExposeSlotKey(for: .click, modifier: clickModifier)

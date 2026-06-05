@@ -59,7 +59,7 @@ final class AppExposeInvoker {
     func invokeApplicationWindows(for bundle: String,
                                   requireEvidence: Bool = true,
                                   completion: @escaping (AppExposeInvokeResult) -> Void) -> AppExposeDispatchReceipt {
-        Logger.log("AppExposeInvoker: invokeApplicationWindows called for bundle \(bundle)")
+        Logger.debug("AppExposeInvoker: invokeApplicationWindows called for bundle \(bundle)")
 
         lastResolvedHotKey = nil
         lastResolveError = "not-used (private Dock notification path)"
@@ -70,7 +70,7 @@ final class AppExposeInvoker {
         let baselineDockSignature = dockWindowSignatureSnapshot()
         let posted = DockNotificationSender.post(notification: appExposeDockNotification)
         recordAttempt("dockNotification posted=\(posted)")
-        Logger.log("AppExposeInvoker: attempt=dockNotification(\(appExposeDockNotification)) posted=\(posted)")
+        Logger.debug("AppExposeInvoker: attempt=dockNotification(\(appExposeDockNotification)) posted=\(posted)")
 
         let strategy: AppExposeInvokeStrategy? = posted ? .dockNotification : nil
         if posted {
@@ -95,7 +95,7 @@ final class AppExposeInvoker {
         }
 
         guard requireEvidence else {
-            Logger.log("AppExposeInvoker: selected strategy=dockNotification (evidence not required)")
+            Logger.debug("AppExposeInvoker: selected strategy=dockNotification (evidence not required)")
             completion(
                 finalizeResult(
                     AppExposeAttemptOutcome(dispatched: true,
@@ -112,9 +112,9 @@ final class AppExposeInvoker {
             let evidence = await self.waitForExposeEvidence(baselineDockSignature: baselineDockSignature)
             self.recordAttempt("dockNotification evidence=\(evidence)")
             if evidence {
-                Logger.log("AppExposeInvoker: selected strategy=dockNotification")
+                Logger.debug("AppExposeInvoker: selected strategy=dockNotification")
             } else {
-                Logger.log("AppExposeInvoker: dock notification posted but no Expose evidence")
+                Logger.debug("AppExposeInvoker: dock notification posted but no Expose evidence")
             }
             completion(
                 self.finalizeResult(

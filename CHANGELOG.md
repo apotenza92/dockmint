@@ -6,6 +6,10 @@ All notable changes to this project are documented in this file (stable and beta
 
 - Ongoing development.
 
+## [v0.4.1]
+
+- Made App Exposé and window-count diagnostic logging quiet by default in shipped builds, with detailed diagnostics emitted only when `Save diagnostic logs` or the debug log override is enabled.
+
 ## [v0.4.0]
 
 - Made App Exposé window counting cross-Space aware, so the `requires multiple windows` gate can detect windows spread across Mission Control Spaces while preserving current-Space-only behaviour for minimise, restore, and bring-to-front actions.
