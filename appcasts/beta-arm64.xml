@@ -5,18 +5,19 @@
     <description>Dockmint update feed (beta channel)</description>
     <language>en</language>
     <item>
-      <title>Version 0.3.3</title>
-      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.3.3</link>
-      <sparkle:version>300390000</sparkle:version>
-      <sparkle:shortVersionString>0.3.3</sparkle:shortVersionString>
+      <title>Version 0.4.0</title>
+      <link>https://github.com/apotenza92/dockmint/releases/tag/v0.4.0</link>
+      <sparkle:version>400090000</sparkle:version>
+      <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
       <sparkle:fullReleaseNotesLink>https://github.com/apotenza92/dockmint/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
-      <description sparkle:format="plain-text"><![CDATA[- Added a `Reverse mouse scroll direction` setting for mouse-wheel scroll actions, with first-run and Settings suggestions for users of tools like LinearMouse, Mos, and UnnaturalScrollWheels while leaving trackpad gestures unchanged.
-- Improved Dock scroll direction diagnostics and routing so remapped mouse-wheel actions can be corrected explicitly, and set both default no-modifier app-icon scroll directions to App Exposé.]]></description>
-      <pubDate>Tue, 05 May 2026 02:57:29 +0000</pubDate>
-      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.3.3/Dockmint-Beta-v0.3.3-macos-arm64.zip"
-                 sparkle:edSignature="ZlTAiSd44aMQODIKo+BxPxfubkcHCpgji7K5n4CpjKGyzJk37wSWn9x5Byno/YAvtnH8xQGtwgZW7lcOGBoQCw=="
-                 length="2946326"
+      <description sparkle:format="plain-text"><![CDATA[- Made App Exposé window counting cross-Space aware, so the `requires multiple windows` gate can detect windows spread across Mission Control Spaces while preserving current-Space-only behaviour for minimise, restore, and bring-to-front actions.
+- Improved App Exposé click responsiveness with mouse-down prewarming, short-lived diagnostics caching, reusable CG window snapshots, lazy Space lookups, and cached related-process discovery.
+- Added App Exposé timing diagnostics and an automated timing benchmark for comparing cache and prewarm settings across real Dock click scenarios.]]></description>
+      <pubDate>Fri, 05 Jun 2026 07:02:19 +0000</pubDate>
+      <enclosure url="https://github.com/apotenza92/dockmint/releases/download/v0.4.0/Dockmint-Beta-v0.4.0-macos-arm64.zip"
+                 sparkle:edSignature="rhRkxIFpZ1RBKw5fhzVUMLgy4DzLw87dIbywLNC2nFDZWUTCskgUOushFwpgxEmZMs22j7K2LHmi7gqtdmi8Aw=="
+                 length="2964520"
                  type="application/octet-stream" />
     </item>
   </channel>
