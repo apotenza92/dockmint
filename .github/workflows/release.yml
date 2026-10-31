@@ -648,6 +648,7 @@ jobs:
           casks="$(find reviewed-casks -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort | paste -sd ' ' -)"
           [[ "$casks" == 'dockmint.rb dockmint@beta.rb' ]]
           brew tap apotenza92/tap
+          brew trust --tap apotenza92/tap
           tap_path="$(brew --repository apotenza92/tap)"
           cp reviewed-casks/dockmint.rb "$tap_path/Casks/dockmint.rb"
           cp reviewed-casks/dockmint@beta.rb "$tap_path/Casks/dockmint@beta.rb"

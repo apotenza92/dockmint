@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > **Dockmint is now part of [Simple Mac Fixes](https://github.com/apotenza92/simple-mac-fixes).** Simple Mac Fixes is one free app that combines Macsimize, Dockmint and Simple Mac Keyboard Control. It includes two Dockmint features: clicking a Dock app to see its windows, and Option-clicking a Dock folder to open it in Finder. Dockmint’s other Dock actions didn’t carry over. Dockmint is no longer updated and this repository is archived.
 >
-> [Download Simple Mac Fixes](https://apotenza92.github.io/simple-mac-fixes/) or run `brew install --cask apotenza92/tap/simple-mac-fixes`. Simple Mac Fixes closes Dockmint automatically, so you can uninstall it.
+> [Download Simple Mac Fixes](https://apotenza92.github.io/simple-mac-fixes/) or run `brew trust apotenza92/tap 2>/dev/null; brew install --cask apotenza92/tap/simple-mac-fixes`. Simple Mac Fixes closes Dockmint automatically, so you can uninstall it.
 
 <img src="Dockmint/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" alt="Dockmint icon" width="96" />
 
