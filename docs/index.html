@@ -744,8 +744,7 @@
               </div>
               <div class="format-command">
                 <code id="mac-homebrew-code"
-                  >brew tap apotenza92/tap
-brew install --cask apotenza92/tap/dockmint</code
+                  >brew trust apotenza92/tap 2&gt;/dev/null; brew install --cask apotenza92/tap/dockmint</code
                 >
                 <div
                   class="copy-btn"
@@ -1146,8 +1145,8 @@ brew install --cask apotenza92/tap/dockmint</code
 
       function getHomebrewCommand() {
         return currentChannel === "beta"
-          ? "brew tap apotenza92/tap\nbrew install --cask apotenza92/tap/dockmint@beta"
-          : "brew tap apotenza92/tap\nbrew install --cask apotenza92/tap/dockmint";
+          ? "brew trust apotenza92/tap 2>/dev/null; brew install --cask apotenza92/tap/dockmint@beta"
+          : "brew trust apotenza92/tap 2>/dev/null; brew install --cask apotenza92/tap/dockmint";
       }
 
       function copyIconSvg() {

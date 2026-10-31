@@ -311,6 +311,7 @@ class ReleaseContractTests(unittest.TestCase):
         publication = workflow.split("  prepare-homebrew-publication:", 1)[1]
         self.assertIn("name: reviewed-homebrew-casks", validation)
         self.assertIn("brew tap apotenza92/tap", validation)
+        self.assertIn("brew trust --tap apotenza92/tap", validation)
         self.assertIn("apotenza92/tap/dockmint@beta", validation)
         self.assertIn("name: reviewed-homebrew-casks", publication)
         self.assertNotIn("update_homebrew_tap_casks.py", publication)
